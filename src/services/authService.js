@@ -165,6 +165,38 @@ export const updateUser = async (userId, userData) => {
 };
 
 /**
+ * Servicio para obtener el perfil completo del usuario autenticado.
+ * Realiza una consulta directa a la base de datos para obtener información actualizada.
+ */
+export const getProfile = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('No hay una sesión activa. Por favor, inicie sesión.');
+    }
+
+    const response = await fetch(`${API_URL}/auth/profile`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al obtener el perfil del usuario');
+    }
+
+    const data = await response.json();
+    return data.data; // El backend devuelve { success: true, data: { ... } }
+  } catch (error) {
+    console.error("Error obteniendo el perfil:", error);
+    throw error;
+  }
+};
+
+/**
  * Servicio para solicitar la recuperación de contraseña.
  */
 export const forgotPassword = async (email) => {
@@ -175,15 +207,54 @@ export const forgotPassword = async (email) => {
       body: JSON.stringify({ email })
     });
 
-    const data = await response.json();
+    // Manejo seguro de la respuesta para evitar el error "Unexpected token <"
+    const contentType = response.headers.get("content-type");
+    let data = null;
+    
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    }
 
     if (!response.ok) {
-      throw new Error(data.message || 'Error al procesar la solicitud');
+      const errorMessage = data?.message || (response.status === 404 
+        ? 'El endpoint de recuperación no fue encontrado (404).' 
+        : `Error del servidor (${response.status})`);
+      throw new Error(errorMessage);
     }
 
     return data;
   } catch (error) {
     console.error("Error en forgotPassword service:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para restablecer la contraseña usando un token.
+ */
+export const resetPassword = async (token, password) => {
+  try {
+    const response = await fetch(`${API_URL}/auth/reset_password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, password })
+    });
+
+    const contentType = response.headers.get("content-type");
+    let data = null;
+    
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    }
+
+    if (!response.ok) {
+      const errorMessage = data?.message || `Error del servidor (${response.status})`;
+      throw new Error(errorMessage);
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error en resetPassword service:", error);
     throw error;
   }
 };
@@ -297,6 +368,152 @@ export const updateApplicantStatus = async (applicantId, newStatus) => {
     return await response.json();
   } catch (error) {
     console.error("Error en updateApplicantStatus:", error);
+    throw error;
+  }
+};
+
+/**
+ * Mapeo interno para dirigir las peticiones a los módulos específicos del backend.
+ */
+const INPUT_ENDPOINTS = {
+  'Stuffing': 'inputs-stuffing',
+  'Stamps': 'inputs-stamps',
+  'Oring': 'inputs-oring',
+  'Chemicals': 'inputs-chemicals',
+  'Bags': 'inputs-bags',
+  'Cardboard': 'inputs-cardboard',
+  'Cases': 'inputs-cases',
+  'Thermoplastics': 'inputs-thermoplastics',
+  'Packings': 'inputs-cameras',
+  'Collars': 'inputs-collars'
+};
+
+/**
+ * Obtiene el catálogo global desde la tabla maestra.
+ */
+export const getInsumos = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+    const response = await fetch(`${API_URL}/master-inputs`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al obtener la lista de insumos del servidor');
+    }
+
+    const data = await response.json();
+    return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Error obteniendo insumos:", error);
+    throw error;
+  }
+};
+
+/**
+ * Obtiene la lista de insumos de una tabla técnica específica.
+ * Esto permite realizar búsquedas directas en el módulo seleccionado.
+ */
+export const getInsumosByType = async (tipo) => {
+  try {
+    const token = localStorage.getItem('token');
+    const modulePath = INPUT_ENDPOINTS[tipo];
+    
+    if (!modulePath) {
+      throw new Error(`No se encontró un endpoint para el tipo: ${tipo}`);
+    }
+
+    const response = await fetch(`${API_URL}/${modulePath}`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) throw new Error('Error al conectar con la tabla técnica');
+    const data = await response.json();
+    const results = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+    // Inyectamos el tipo para que el frontend mantenga el mapeo de labels
+    return results.map(item => ({ ...item, tipo }));
+  } catch (error) {
+    console.error("Error en getInsumosByType:", error);
+    throw error;
+  }
+};
+
+/**
+ * Registra un insumo en su tabla técnica específica según el tipo.
+ */
+export const registerInsumo = async (insumoData) => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    // Extraemos 'tipo' para la URL y lo quitamos del cuerpo para evitar error 400
+    const { tipo, ...dataToSend } = insumoData;
+    const modulePath = INPUT_ENDPOINTS[tipo];
+    
+    if (!modulePath) {
+      throw new Error(`No se encontró un endpoint configurado para el tipo: ${tipo}`);
+    }
+
+    const response = await fetch(`${API_URL}/${modulePath}`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(dataToSend)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al registrar el insumo en la base de datos');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en registerInsumo:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para actualizar las especificaciones de un insumo existente.
+ */
+export const updateInsumo = async (id, insumoData) => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    const { tipo, ...dataToSend } = insumoData;
+    const modulePath = INPUT_ENDPOINTS[tipo];
+
+    if (!modulePath) {
+      throw new Error(`No se encontró un endpoint configurado para el tipo: ${tipo}`);
+    }
+
+    const response = await fetch(`${API_URL}/${modulePath}/${id}`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(dataToSend)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al actualizar el insumo');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en updateInsumo:", error);
     throw error;
   }
 };

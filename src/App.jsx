@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -26,6 +27,9 @@ function App() {
 
           {/* Redirección de seguridad: si entran a /login, los llevamos a la raíz */}
           <Route path="/login" element={<Navigate to="/" replace />} />
+
+          {/* Ruta de Recuperación: Pública y accesible desde el enlace del correo */}
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           {/* Ruta del Dashboard: Protegida, si no hay usuario redirige al Login */}
           <Route 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus } from '../services/authService'; 
+import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus, updateProfile } from '../services/authService'; 
+import ConfirmModal from '../components/ConfirmModal';
  
 const AdminDashboardContent = ({ activeAction, refreshKey }) => {
   // Estado inicial siguiendo el orden de la base de datos
@@ -8,7 +9,8 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
     password: '',
     name: '',
     lastname: '',
-    ci: '',
+    ci_type: 'V-',
+    ci_number: '',
     email: '',
     roles_id: '1', // Por defecto Administrador
     status: 'Activo' // Ahora con mayúscula inicial según el backend
@@ -16,11 +18,24 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
 
   const [loading, setLoading] = useState(false);
 
+  // Estado para notificaciones personalizadas (Reemplaza a window.alert)
+  const [notification, setNotification] = useState({ message: '', type: 'success', visible: false });
+
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type, visible: true });
+    setTimeout(() => {
+      setNotification(prev => ({ ...prev, visible: false }));
+    }, 4000);
+  };
+
   // Estados para la lista de usuarios
   const [users, setUsers] = useState([]);
   const [fetchingUsers, setFetchingUsers] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
+
+  // Estado para el buscador
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Estados para la lista de postulantes
   const [applicants, setApplicants] = useState([]);
@@ -28,6 +43,14 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
 
   // Estado interno para alternar entre la lista de usuarios y el registro
   const [subView, setSubView] = useState('list'); // 'list' o 'add'
+
+  // Estado para el Modal de Confirmación
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   // Cargar usuarios cuando se entra a la sección de usuarios en modo lista
   useEffect(() => {
@@ -71,7 +94,13 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    // Validación estricta para el número de cédula: solo números
+    if (name === 'ci_number') {
+      const numericValue = value.replace(/\D/g, '');
+      setFormData(prev => ({ ...prev, [name]: numericValue }));
+    } else {
     setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -82,21 +111,21 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
       // Conversión de tipos para asegurar compatibilidad estricta con la DB
       const dataToSend = {
         ...formData,
-        ci: parseInt(formData.ci.toString().replace(/\D/g, ''), 10), // Limpia puntos/letras y envía número puro
+        ci: `${formData.ci_type}${formData.ci_number}`, // Combina prefijo y número
         roles_id: parseInt(formData.roles_id, 10),
         status: formData.status // Ya viene como 'Activo' o 'Inactivo'
       };
 
       await registerUser(dataToSend);
-      alert("Usuario registrado con éxito en la base de datos.");
+      showNotification("Usuario registrado con éxito en la base de datos.");
       
       // Limpiar formulario tras éxito
       setFormData({
         user: '', password: '', name: '', lastname: '',
-        ci: '', email: '', roles_id: '1', status: 'Activo'
+        ci_type: 'V-', ci_number: '', email: '', roles_id: '1', status: 'Activo'
       });
     } catch (error) {
-      alert(`Error: ${error.message}`);
+      showNotification(`Error: ${error.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -135,7 +164,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
 
       await updateUser(editingUserId, payload);
       
-      alert("Usuario actualizado exitosamente.");
+      showNotification("Usuario actualizado exitosamente.");
       
       const data = await getUsers();
       const updatedList = Array.isArray(data) ? data : (data.data || []);
@@ -144,7 +173,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
     } catch (error) {
       // 4. Captura de errores de red o de respuesta del servidor (4xx, 5xx)
       console.error("Error capturado:", error);
-      alert(`No se pudo completar la operación: ${error.message}`);
+      showNotification(`No se pudo completar la operación: ${error.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -162,25 +191,69 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
   };
 
   // Manejador para cambiar el estado del postulante
-  const handleToggleStatus = async (applicant) => {
-    setLoading(true);
-    try {
-      const newStatus = applicant.status === 'Activo' ? 'Inactivo' : 'Activo';
-      await updateApplicantStatus(applicant.id, newStatus);
-      
-      // Actualizar la lista localmente para reflejar el cambio inmediato
-      setApplicants(prev => prev.map(a => 
-        a.id === applicant.id ? { ...a, status: newStatus } : a
-      ));
-    } catch (error) {
-      alert(`Error al cambiar estado: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
+  const handleToggleStatus = (applicant) => {
+    const isActivating = applicant.status !== 'Activo';
+    
+    setConfirmModal({
+      isOpen: true,
+      title: isActivating ? 'Activar Postulante' : 'Desactivar Postulante',
+      message: `¿Está seguro de que desea cambiar el estado de ${applicant.name} ${applicant.lastname} a ${isActivating ? 'Activo' : 'Inactivo'}?`,
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          const newStatus = isActivating ? 'Activo' : 'Inactivo';
+          await updateApplicantStatus(applicant.id, newStatus);
+          setApplicants(prev => prev.map(a => a.id === applicant.id ? { ...a, status: newStatus } : a));
+          showNotification(`Postulante ${isActivating ? 'activado' : 'desactivado'} correctamente.`);
+        } catch (error) {
+          showNotification(`Error: ${error.message}`, 'error');
+        } finally {
+          setLoading(false);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
   };
+
+  // Lógica de filtrado para el buscador (Nombre y CI sin prefijos)
+  const filteredUsers = users.filter(u => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return true;
+
+    // Búsqueda por nombre o apellido ( Gregory, Fabian, etc )
+    const fullName = `${u.name} ${u.lastname}`.toLowerCase();
+    const nameMatch = fullName.includes(term);
+
+    // Búsqueda por CI ( Permite buscar '123' y encontrar 'V-123' )
+    const ciStr = String(u.ci || '').toLowerCase();
+    const termDigits = term.replace(/\D/g, '');
+    const ciDigits = ciStr.replace(/\D/g, '');
+    const ciMatch = ciStr.includes(term) || (termDigits !== '' && ciDigits.includes(termDigits));
+
+    return nameMatch || ciMatch;
+  });
 
   return (
     <div className="dashboard-content-body">
+      {/* Modal de Confirmación Custom (Reemplazo de localhost dice) */}
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        confirmText="Aceptar"
+        cancelText="Cancelar"
+      />
+
+      {/* Notificación Toast Industrial */}
+      <div className={`notification-toast ${notification.visible ? 'visible' : ''} ${notification.type}`}>
+        <span className="material-symbols-outlined">
+          {notification.type === 'error' ? 'error' : 'check_circle'}
+        </span>
+        <span className="notification-message">{notification.message}</span>
+      </div>
+
       {activeAction === 'users' && (
         <div className="users-management-view">
           <div className="tab-navigation" style={{ marginBottom: '2rem', display: 'flex', gap: '1rem' }}>
@@ -208,7 +281,13 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                   <div className="table-filters">
                     <div className="table-search-wrapper">
                       <span className="material-symbols-outlined">search</span>
-                      <input type="text" className="table-search-input" placeholder="Buscar por nombre, usuario o CI..." />
+                      <input 
+                        type="text" 
+                        className="table-search-input" 
+                        placeholder="Buscar por nombre o CI..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
                     </div>
                   </div>
                   <div className="table-scroll-wrapper">
@@ -219,15 +298,15 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                         <th>Nombre</th>
                         <th>Apellido</th>
                         <th>Rol</th>
-                        <th>CI</th>
+                        <th style={{ minWidth: '130px' }}>CI</th>
                         <th>Email</th>
                         <th>Estado</th>
                         <th className="text-center">Modificar</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {Array.isArray(users) && users.length > 0 ? (
-                        [...users]
+                      {Array.isArray(filteredUsers) && filteredUsers.length > 0 ? (
+                        [...filteredUsers]
                           .sort((a, b) => (a.roles_id || 0) - (b.roles_id || 0))
                           .map((u) => {
                             const rowId = u.user_id || u.id || u.user;
@@ -331,8 +410,28 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                     <input type="password" name="password" className="field-input" value={formData.password} onChange={handleChange} placeholder="••••••••" required />
                   </div>
                   <div className="form-field">
-                    <label>Cédula de Identidad (CI)</label>
-                    <input type="text" name="ci" className="field-input" value={formData.ci} onChange={handleChange} placeholder="Número de identificación" required />
+                    <label>Cédula de Identidad</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <select 
+                        name="ci_type" 
+                        className="field-input" 
+                        style={{ width: '80px', textAlign: 'center', fontWeight: 'bold' }}
+                        value={formData.ci_type} 
+                        onChange={handleChange}
+                      >
+                        <option value="V-">V-</option>
+                        <option value="E-">E-</option>
+                      </select>
+                      <input 
+                        type="text" 
+                        name="ci_number" 
+                        className="field-input" 
+                        value={formData.ci_number} 
+                        onChange={handleChange} 
+                        placeholder="Solo números" 
+                        required 
+                      />
+                    </div>
                   </div>
                   <div className="form-field">
                     <label>Correo Electrónico</label>
@@ -379,7 +478,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                   <tr>
                     <th>Nombre</th>
                     <th>Apellido</th>
-                    <th>CI</th>
+                    <th style={{ minWidth: '130px' }}>CI</th>
                     <th>Email</th>
                     <th>Rol</th>
                     <th>Estado</th>

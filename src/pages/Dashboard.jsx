@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { updateProfile } from '../services/authService';
+import { updateProfile, getProfile } from '../services/authService';
 import Logo from '../components/Logo';
+import ConfirmModal from '../components/ConfirmModal';
 import logoImg from '../assets/logo.jpeg';
 import './Dashboard.css';
 
@@ -13,11 +14,21 @@ import TrabajadorDashboardContent from './TrabajadorDashboardContent';
 const Dashboard = ({ user = {}, onLogout }) => {
   const [activeAction, setActiveAction] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [showProfile, setShowProfile] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [profileData, setProfileData] = useState(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
+  });
+
+  // Estado para el modal de estado (Aprobación/Error)
+  const [statusModal, setStatusModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
   });
 
   // Estados para controlar la visibilidad de las contraseñas
@@ -35,6 +46,22 @@ const Dashboard = ({ user = {}, onLogout }) => {
     document.getElementsByTagName('head')[0].appendChild(link);
   }, []);
 
+  // Carga inicial del perfil completo desde la base de datos al montar el Dashboard
+  useEffect(() => {
+    const loadProfileData = async () => {
+      setLoadingProfile(true);
+      try {
+        const data = await getProfile();
+        setProfileData(data);
+      } catch (error) {
+        console.error("Error al recopilar información de la base de datos:", error);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+    loadProfileData();
+  }, []);
+
   const toggleVisibility = (field) => {
     setShowPass(prev => ({ ...prev, [field]: !prev[field] }));
   };
@@ -44,31 +71,51 @@ const Dashboard = ({ user = {}, onLogout }) => {
     setPasswordForm(prev => ({ ...prev, [name]: value }));
   };
 
-  const handlePasswordSubmit = async (e) => {
+  const handlePasswordUpdateSubmit = async (e) => {
     e.preventDefault();
     const { currentPassword, newPassword, confirmPassword } = passwordForm;
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      alert("Por favor, complete todos los campos.");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      alert("La nueva contraseña y su confirmación no coinciden.");
-      return;
-    }
-
-    try {
-      // Conexión real con el backend
-      await updateProfile({ 
-        currentPassword: currentPassword, // Enviamos la contraseña actual para validación en el backend
-        password: newPassword // Enviamos la nueva contraseña como 'password'
+      setStatusModal({
+        isOpen: true,
+        title: 'Campos Incompletos',
+        message: 'Por favor, complete todos los campos de contraseña.',
+        type: 'danger'
       });
-      alert("Contraseña actualizada con éxito.");
-      setShowProfile(false);
-      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setStatusModal({
+        isOpen: true,
+        title: 'Error de Coincidencia',
+        message: 'La nueva contraseña y su confirmación no coinciden.',
+        type: 'danger'
+      });
+      return;
+    }
+    try {
+      await updateProfile({ 
+        currentPassword,
+        password: newPassword
+      });
+      setStatusModal({
+        isOpen: true,
+        title: 'Actualización Exitosa',
+        message: 'Tu contraseña ha sido actualizada con éxito en el sistema.',
+        type: 'info'
+      });
+      setPasswordForm({ 
+        currentPassword: '', 
+        newPassword: '', 
+        confirmPassword: '' 
+      });
     } catch (err) {
-      alert(`Error al actualizar la contraseña: ${err.message}`);
+      setStatusModal({
+        isOpen: true,
+        title: 'Error de Actualización',
+        message: `No se pudo cambiar la contraseña: ${err.message}`,
+        type: 'danger'
+      });
     }
   };
 
@@ -81,7 +128,8 @@ const Dashboard = ({ user = {}, onLogout }) => {
   // Esta función ayuda a identificar el rol sin importar si viene como ID, 
   // texto en mayúsculas, minúsculas o con tildes.
   const getNormalizedRole = () => {
-    const roleInput = (user.role || user.roles_id || '').toString().toLowerCase();
+    const roleSource = profileData?.role || user.role || user.roles_id || '';
+    const roleInput = roleSource.toString().toLowerCase();
     
     if (roleInput === '1' || roleInput.includes('admin')) return 'Administrador';
     if (roleInput === '2' || roleInput.includes('trabajador')) return 'Trabajador';
@@ -103,6 +151,126 @@ const Dashboard = ({ user = {}, onLogout }) => {
       );
     }
 
+    if (activeAction === 'profile') {
+      return (
+        <div className="form-container">
+          <h2 className="form-title">Configuración de Seguridad y Perfil</h2>
+          
+          <div className="welcome-card" style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '2rem', border: '1px solid var(--outline-variant)' }}>
+            <div className="avatar-circle" style={{ width: '80px', height: '80px', border: '2px solid var(--primary)' }}>
+              <img src={logoImg} alt="Profile" className="avatar-img" />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, color: 'var(--primary)', fontSize: '1.5rem' }}>
+                {profileData?.name || user.name} {profileData?.lastname || user.lastname || ''}
+              </h3>
+              <p style={{ margin: '5px 0', color: 'var(--secondary)', fontWeight: '700', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>{profileData?.role || userRole}</p>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--on-surface)' }}>{profileData?.email || user.email || 'usuario@sealingproducts.com'}</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '3rem', alignItems: 'start' }}>
+            {/* Columna Izquierda: Información General (Solo Lectura) */}
+            <div className="form-section-left">
+              <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--secondary)', borderBottom: '1px solid var(--outline-variant)', paddingBottom: '0.5rem', textTransform: 'uppercase', fontWeight: '700' }}>
+                Ficha de Identidad
+              </h3>
+              <div className="profile-data-display" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div className="data-item">
+                  <label style={{ fontSize: '0.7rem', color: 'var(--secondary)', textTransform: 'uppercase', fontWeight: '700', display: 'block', marginBottom: '4px' }}>Nombres y Apellidos</label>
+                  <p style={{ margin: 0, fontSize: '1rem', color: 'var(--on-surface)', fontWeight: '500' }}>{profileData?.name || user.name} {profileData?.lastname || user.lastname || ''}</p>
+                </div>
+                <div className="data-item">
+                  <label style={{ fontSize: '0.7rem', color: 'var(--secondary)', textTransform: 'uppercase', fontWeight: '700', display: 'block', marginBottom: '4px' }}>Cédula de Identidad</label>
+                  <p style={{ margin: 0, fontSize: '1rem', color: 'var(--on-surface)' }}>{profileData?.ci || user.ci || 'V-00.000.000'}</p>
+                </div>
+                <div className="data-item">
+                  <label style={{ fontSize: '0.7rem', color: 'var(--secondary)', textTransform: 'uppercase', fontWeight: '700', display: 'block', marginBottom: '4px' }}>Cargo / Rol Asignado</label>
+                  <p style={{ margin: 0, fontSize: '1rem', color: 'var(--primary)', fontWeight: '700' }}>{profileData?.role || userRole}</p>
+                </div>
+                <div className="data-item">
+                  <label style={{ fontSize: '0.7rem', color: 'var(--secondary)', textTransform: 'uppercase', fontWeight: '700', display: 'block', marginBottom: '4px' }}>Correo Corporativo</label>
+                  <p style={{ margin: 0, fontSize: '1rem', color: 'var(--on-surface)' }}>{profileData?.email || user.email || 'N/A'}</p>
+                </div>
+                <div className="data-item">
+                  <label style={{ fontSize: '0.7rem', color: 'var(--secondary)', textTransform: 'uppercase', fontWeight: '700', display: 'block', marginBottom: '4px' }}>Nombre de Usuario</label>
+                  <p style={{ margin: 0, fontSize: '1rem', color: 'var(--on-surface)', fontFamily: 'monospace' }}>{profileData?.user || user.user || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Columna Derecha: Credenciales de Seguridad */}
+            <div className="form-section-right">
+              <form className="admin-form" onSubmit={handlePasswordUpdateSubmit}>
+                <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--secondary)', borderBottom: '1px solid var(--outline-variant)', paddingBottom: '0.5rem', textTransform: 'uppercase', fontWeight: '700' }}>
+                  Actualizar Credenciales de Acceso
+                </h3>
+                
+                <div className="form-field" style={{ marginBottom: '1.5rem' }}>
+                  <label>Contraseña Actual</label>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type={showPass.current ? "text" : "password"} 
+                      name="currentPassword" 
+                      className="field-input" 
+                      value={passwordForm.currentPassword} 
+                      onChange={handlePasswordInputChange} 
+                      placeholder="Ingrese su clave actual" 
+                      required 
+                    />
+                    <button type="button" onClick={() => toggleVisibility('current')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{showPass.current ? 'visibility_off' : 'visibility'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-grid">
+                  <div className="form-field">
+                    <label>Nueva Contraseña</label>
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        type={showPass.new ? "text" : "password"} 
+                        name="newPassword" 
+                        className="field-input" 
+                        value={passwordForm.newPassword} 
+                        onChange={handlePasswordInputChange} 
+                        placeholder="Mínimo 8 caracteres" 
+                        required 
+                      />
+                      <button type="button" onClick={() => toggleVisibility('new')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{showPass.new ? 'visibility_off' : 'visibility'}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="form-field">
+                    <label>Confirmar Nueva Contraseña</label>
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        type={showPass.confirm ? "text" : "password"} 
+                        name="confirmPassword" 
+                        className="field-input" 
+                        value={passwordForm.confirmPassword} 
+                        onChange={handlePasswordInputChange} 
+                        placeholder="Repita su nueva clave" 
+                        required 
+                      />
+                      <button type="button" onClick={() => toggleVisibility('confirm')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{showPass.confirm ? 'visibility_off' : 'visibility'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="form-actions" style={{ marginTop: '2.5rem' }}>
+                  <button type="submit" className="btn btn-primary">Actualizar contraseña</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (activeAction) {
     switch (userRole) {
       case 'Administrador':
@@ -110,7 +278,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
       case 'Jefe de Calidad':
         return <JefeCalidadDashboardContent activeAction={activeAction} />;
       case 'Jefe de Ingeniería':
-        return <JefeIngenieriaDashboardContent activeAction={activeAction} />;
+        return <JefeIngenieriaDashboardContent activeAction={activeAction} user={profileData || user} />;
       case 'Trabajador':
         return <TrabajadorDashboardContent activeAction={activeAction} />;
       default:
@@ -121,6 +289,17 @@ const Dashboard = ({ user = {}, onLogout }) => {
           </section>
         );
     }
+    }
+
+    // Solo el administrador tiene acceso a las estadísticas generales (Bento Grid)
+    // Si es otro rol y no hay acción activa, mostramos bienvenida personalizada
+    if (userRole !== 'Administrador') {
+      return (
+        <section className="welcome-card">
+          <h2 style={{ color: 'var(--primary)', marginBottom: '1rem' }}>Bienvenido, {user.name}</h2>
+          <p>Por favor, seleccione una de las opciones en el menú de la izquierda para gestionar las tareas de <strong>{userRole}</strong>.</p>
+        </section>
+      );
     }
 
     // Vista por defecto: Bento Grid de Stitch
@@ -224,24 +403,27 @@ const Dashboard = ({ user = {}, onLogout }) => {
   };
 
   return (
-    <div className={`dashboard-root role-${userRole.toLowerCase().replace(/\s+/g, '-')}`}>
+    <div className={`dashboard-root role-${userRole.toLowerCase().replace(/\s+/g, '-')} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      {/* Modal de Estado para el Perfil */}
+      <ConfirmModal 
+        isOpen={statusModal.isOpen}
+        title={statusModal.title}
+        message={statusModal.message}
+        type={statusModal.type}
+        confirmText="Entendido"
+        onConfirm={() => setStatusModal(prev => ({ ...prev, isOpen: false }))}
+        onCancel={() => setStatusModal(prev => ({ ...prev, isOpen: false }))}
+      />
+
       {/* Sidebar de Navegación */}
       <nav className="side-nav">
-        <div className="nav-brand">
-          <img src={logoImg} alt="Logo" className="nav-logo" />
-          <div className="brand-text">
-            <h1>Sealing Admin</h1>
-            <p>Manufacturing Portal</p>
-          </div>
-        </div>
-
         <div className="nav-menu">
-          <button className={`nav-link ${!activeAction ? 'active' : ''}`} onClick={() => setActiveAction(null)}>
-            <span className="material-symbols-outlined">dashboard</span>
-            Panel
-          </button>
-          
-          <div className="nav-divider"></div>
+          {userRole === 'Administrador' && (
+            <button className={`nav-link ${!activeAction ? 'active' : ''}`} onClick={() => setActiveAction(null)}>
+              <span className="material-symbols-outlined">dashboard</span>
+              Panel
+            </button>
+          )}
           
           {/* Acciones por Rol movidas al Sidebar */}
           {userRole === 'Administrador' && (
@@ -313,22 +495,28 @@ const Dashboard = ({ user = {}, onLogout }) => {
       <main className="main-viewport">
         <header className="top-app-bar">
           <div className="header-left">
-            <span className="material-symbols-outlined menu-icon">menu</span>
+            <span 
+              className="material-symbols-outlined menu-icon" 
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            >
+              {isSidebarCollapsed ? 'menu' : 'menu_open'}
+            </span>
             <h2 className="page-title">
-              {activeAction ? activeAction.toUpperCase().replace('_', ' ') : 'Panel de Control Operativo'}
+              {activeAction ? activeAction.toUpperCase().replace('_', ' ') : 'Panel'}
             </h2>
           </div>
           
           <div className="header-right">
-            <div className="user-profile-trigger" onClick={() => setShowProfile(true)}>
+            <div className={`user-profile-trigger ${activeAction === 'profile' ? 'active-profile' : ''}`} onClick={() => handleActionClick('profile')}>
               <div className="user-info">
-                <p className="user-name">{user.name}</p>
+                <p className="user-name">{profileData?.name || user.name}</p>
                 <p className="user-role-label">{userRole}</p>
               </div>
               <div className="avatar-circle">
                 <img src={logoImg} alt="Profile" className="avatar-img" />
               </div>
             </div>
+            <img src={logoImg} alt="Logo Corporativo" className="header-logo" />
           </div>
         </header>
 
@@ -340,50 +528,6 @@ const Dashboard = ({ user = {}, onLogout }) => {
           <span className="footer-copy">© 2026 Sealing Products C.A. • Gestión de Activos Industriales</span>
         </footer>
       </main>
-
-      {/* Modal de Perfil (Lógica mantenida) */}
-      {showProfile && (
-        <div className="modal-overlay">
-          <div className="profile-modal">
-            <button className="close-btn" onClick={() => setShowProfile(false)}>×</button>
-            <h2 className="form-title">Configuración de Seguridad</h2>
-            <form className="admin-form" onSubmit={handlePasswordSubmit}>
-              <div className="form-field">
-                <label>Contraseña Actual</label>
-                <div className="password-input-wrapper">
-                  <input type={showPass.current ? "text" : "password"} name="currentPassword" value={passwordForm.currentPassword} onChange={handlePasswordInputChange} placeholder="••••••••" required />
-                  <button type="button" className="password-toggle-btn" onClick={() => toggleVisibility('current')}>
-                    <span className="material-symbols-outlined">{showPass.current ? 'visibility_off' : 'visibility'}</span>
-                  </button>
-                </div>
-              </div>
-              <div className="form-grid">
-                <div className="form-field">
-                  <label>Nueva Contraseña</label>
-                  <div className="password-input-wrapper">
-                    <input type={showPass.new ? "text" : "password"} name="newPassword" value={passwordForm.newPassword} onChange={handlePasswordInputChange} placeholder="••••••••" required />
-                    <button type="button" className="password-toggle-btn" onClick={() => toggleVisibility('new')}>
-                      <span className="material-symbols-outlined">{showPass.new ? 'visibility_off' : 'visibility'}</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="form-field">
-                  <label>Confirmar Nueva</label>
-                  <div className="password-input-wrapper">
-                    <input type={showPass.confirm ? "text" : "password"} name="confirmPassword" value={passwordForm.confirmPassword} onChange={handlePasswordInputChange} placeholder="••••••••" required />
-                    <button type="button" className="password-toggle-btn" onClick={() => toggleVisibility('confirm')}>
-                      <span className="material-symbols-outlined">{showPass.confirm ? 'visibility_off' : 'visibility'}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="form-actions">
-                <button type="submit" className="btn btn-primary">Actualizar Credenciales</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

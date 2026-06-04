@@ -2,6 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { loginUser, forgotPassword } from '../services/authService';
 import Logo from '../components/Logo';
+import ConfirmModal from '../components/ConfirmModal';
 import logoImg from '../assets/logo.jpeg';
 import './LoginPage.css';
 
@@ -17,6 +18,14 @@ const LoginPage = ({ onLoginSuccess }) => {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
+
+  // Estado para el modal de éxito/error de recuperación
+  const [recoveryStatusModal, setRecoveryStatusModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   useEffect(() => {
     document.title = 'Sealing Products C.A.';
@@ -50,11 +59,21 @@ const LoginPage = ({ onLoginSuccess }) => {
     setForgotLoading(true);
     try {
       const res = await forgotPassword(forgotEmail);
-      alert(res.message || "Se ha enviado una nueva contraseña a su correo.");
       setShowForgotModal(false);
       setForgotEmail('');
+      setRecoveryStatusModal({
+        isOpen: true,
+        title: 'Envío Exitoso',
+        message: res.message || "Se ha enviado un enlace de recuperación a su correo corporativo.",
+        type: 'info'
+      });
     } catch (err) {
-      alert(err.message);
+      setRecoveryStatusModal({
+        isOpen: true,
+        title: 'Error de Solicitud',
+        message: err.message,
+        type: 'danger'
+      });
     } finally {
       setForgotLoading(false);
     }
@@ -62,6 +81,17 @@ const LoginPage = ({ onLoginSuccess }) => {
 
   return (
     <main className="login-page">
+      {/* Modal de Estado de Recuperación (Reemplaza alert) */}
+      <ConfirmModal 
+        isOpen={recoveryStatusModal.isOpen}
+        title={recoveryStatusModal.title}
+        message={recoveryStatusModal.message}
+        type={recoveryStatusModal.type}
+        confirmText="Entendido"
+        onConfirm={() => setRecoveryStatusModal(prev => ({ ...prev, isOpen: false }))}
+        onCancel={() => setRecoveryStatusModal(prev => ({ ...prev, isOpen: false }))}
+      />
+
       <div className="login-wrapper">
         <div className="login-brand" style={{ display: 'flex', justifyContent: 'center', width: '100%', marginBottom: '1.5rem' }}>
           <Logo variant="large" />
@@ -158,12 +188,8 @@ const LoginPage = ({ onLoginSuccess }) => {
 
       {/* Modal de Recuperación de Contraseña */}
       {showForgotModal && (
-        <div className="modal-overlay" style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-        }}>
-          <div className="login-card" style={{ width: '90%', maxWidth: '400px', padding: '2.5rem', position: 'relative' }}>
+        <div className="modal-overlay">
+          <div className="login-card" style={{ width: '100%', maxWidth: '400px', position: 'relative', animation: 'modalScaleIn 0.3s ease' }}>
             <h2 className="login-card__title" style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>Recuperar Contraseña</h2>
             <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem', lineHeight: '1.4' }}>
               Ingrese su correo electrónico registrado para enviarle una nueva clave temporal.
