@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Proyecto SICVIC - Frontend
 
 Este es el repositorio del frontend para el sistema **SICVIC**, desarrollado con **React** y **Vite**.
@@ -41,3 +42,7 @@ Para probar las funcionalidades por rol, utilice las credenciales de prueba conf
 - **Trabajador**
 
 *Nota: Las contraseñas se encuentran encriptadas en la base de datos mediante Bcrypt.*
+=======
+# frontend_public_end
+Frontend publico final
+>>>>>>> 9b3751dbe0b03a51bd8bfe4dc2084b4ecb24397d
