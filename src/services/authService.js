@@ -517,3 +517,78 @@ export const updateInsumo = async (id, insumoData) => {
     throw error;
   }
 };
+
+/** 
+ * Obtiene la lista de todos los avisos registrados en 'mensajes_web'.
+ */
+export const getNoticesList = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/website-notice`, {
+      method: 'GET',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) throw new Error('Error al obtener lista de avisos');
+    
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error("Error en getNoticesList API:", error);
+    return [];
+  }
+};
+
+/** 
+ * Obtiene el aviso activo para el sitio web.
+ */
+export const getWebsiteNotice = async () => {
+  try {
+    const response = await fetch(`${API_URL}/website-notice`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    
+    // El backend devuelve un array de mensajes ordenados por ID desc.
+    // Tomamos el primero (el más reciente) como el aviso activo.
+    const latestNotice = Array.isArray(data.data) && data.data.length > 0 ? data.data[0] : null;
+    
+    return { 
+      enabled: !!latestNotice, 
+      text: latestNotice?.note || 'Actualmente no contamos con vacantes disponibles.', 
+      type: latestNotice?.name || 'none',
+      id: latestNotice?.id || null
+    };
+  } catch (error) {
+    return { enabled: false, text: "No disponible", type: 'none' };
+  }
+};
+
+/** 
+ * Actualiza o crea el aviso que se mostrará en el sitio web.
+ */
+export const updateWebsiteNotice = async (name, note) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/website-notice`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ name, note })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al actualizar aviso');
+    }
+    const res = await response.json();
+    return { id: res.data.id, type: res.data.name, text: res.data.note, enabled: true };
+  } catch (error) {
+    throw error;
+  }
+};

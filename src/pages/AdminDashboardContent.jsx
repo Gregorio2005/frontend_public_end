@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus, updateProfile } from '../services/authService'; 
+import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus, updateProfile, updateWebsiteNotice, getWebsiteNotice, getNoticesList } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
  
 const AdminDashboardContent = ({ activeAction, refreshKey }) => {
@@ -26,6 +26,44 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
     setTimeout(() => {
       setNotification(prev => ({ ...prev, visible: false }));
     }, 4000);
+  };
+
+  // Estado para los avisos
+  const [websiteNotice, setWebsiteNotice] = useState({ id: null, type: '', text: '', enabled: false }); // Inicializamos con valores vacíos, incluyendo id
+  const [noticesList, setNoticesList] = useState([]); // Lista para la tabla
+
+  // Función para cargar la lista de mensajes registrados
+  const loadNotices = async () => {
+    try {
+      const data = await getNoticesList();
+      setNoticesList(data);
+    } catch (error) {
+      console.error("Error al cargar avisos:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (activeAction === 'applicants') {
+      loadNotices();
+      // Cargamos el aviso actual para mostrarlo en el formulario
+      getWebsiteNotice().then(currentNotice => {
+        // Aseguramos que el id se guarde si existe
+        setWebsiteNotice({ ...currentNotice, id: currentNotice.id || null });
+      });
+      
+    }
+  }, [activeAction]); // Depende de activeAction para recargar al entrar a la sección
+
+  // Handler para cambios en los inputs del aviso del sitio web
+  const handleWebsiteNoticeChange = (e) => {
+    const { name, value } = e.target;
+    setWebsiteNotice(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Handler para cargar un mensaje de la tabla en el formulario
+  const handleSelectNotice = (notice) => {
+    setWebsiteNotice({ id: notice.id, type: notice.name, text: notice.note, enabled: true });
+    showNotification("Mensaje cargado en el editor. Pulse 'Guardar' para aplicar al sitio web.");
   };
 
   // Estados para la lista de usuarios
@@ -467,6 +505,110 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
 
       {activeAction === 'applicants' && (
         <div className="form-container">
+          {/* NUEVA SECCIÓN: Gestión de Avisos Públicos */}
+          <div style={{ marginBottom: '2.5rem', padding: '1.5rem', backgroundColor: 'var(--surface-variant)', borderRadius: '12px', border: '2px dashed var(--primary)' }}>
+            <h3 style={{ fontSize: '1rem', color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className="material-symbols-outlined">campaign</span>
+              Comunicados para el Sitio Web
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--secondary)', marginBottom: '1rem' }}>
+              Seleccione una categoría para actualizar automáticamente el anuncio en la parte superior del sitio web.
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="form-field" style={{ flex: 1, minWidth: '300px' }}>
+                <label>Nombre del Comunicado (Ej: VACANTE ACTIVA: ADMINISTRADOR)</label>
+                <input 
+                  type="text" 
+                  name="type" // Mapea a 'name' en la DB
+                  className="field-input" 
+                  value={websiteNotice.type} 
+                  onChange={handleWebsiteNoticeChange} 
+                  placeholder="Nombre de la vacante o comunicado" 
+                  required 
+                />
+              </div>
+              <div className="form-field" style={{ flexBasis: '100%' }}>
+                <label>Descripción del Mensaje</label>
+                <textarea 
+                  name="text" // Mapea a 'note' en la DB
+                  className="field-input" 
+                  value={websiteNotice.text} 
+                  onChange={handleWebsiteNoticeChange} 
+                  placeholder="Detalle el mensaje que se mostrará en el sitio web..." 
+                  rows="4" 
+                  required 
+                />
+              </div>
+              <button 
+                className="btn btn-primary" 
+                onClick={async () => {
+                  try {
+                    // Asegurarse de que ambos campos no estén vacíos antes de enviar
+                    if (!websiteNotice.type || !websiteNotice.text) {
+                      showNotification("El nombre y la descripción del aviso no pueden estar vacíos.", "error");
+                      return;
+                    } 
+                    const updatedNotice = await updateWebsiteNotice(websiteNotice.type, websiteNotice.text);
+                    setWebsiteNotice(updatedNotice); // Actualiza con la respuesta del backend
+                    loadNotices(); // Refresca la tabla
+                    showNotification("Comunicado del sitio web actualizado correctamente.");
+                  } catch (err) {
+                    showNotification(`Error al actualizar el comunicado: ${err.message}`, "error");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+              >
+                {loading ? 'Guardando...' : 'Guardar Comunicado'}
+              </button>
+            </div>
+          </div>
+
+          {/* TABLA DE MENSAJES DISPONIBLES */}
+          <div style={{ marginBottom: '2.5rem' }}>
+            <h3 style={{ fontSize: '1rem', color: 'var(--secondary)', marginBottom: '1rem', fontWeight: '700' }}>
+              Historial de Mensajes Guardados
+            </h3>
+            <div className="table-container-card">
+              <div className="table-scroll-wrapper">
+                <table className="industrial-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Nombre / Vacante</th>
+                      <th>Mensaje / Nota</th>
+                      <th className="text-center">Seleccionar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {noticesList.length > 0 ? (
+                      noticesList.map((item) => (
+                        <tr key={item.id}>
+                          <td style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>#{item.id}</td>
+                          <td style={{ fontWeight: '600' }}>{item.name}</td>
+                          <td style={{ fontSize: '0.85rem' }}>{item.note}</td>
+                          <td className="text-center">
+                            <button 
+                              // Aplica btn-primary si el item.id coincide con el id del aviso cargado
+                              className={`btn ${websiteNotice.id === item.id ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} 
+                              onClick={() => handleSelectNotice(item)}
+                            >
+                              Cargar en Editor
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr><td colSpan="4" className="text-center no-data">No hay mensajes registrados.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
           <h2 className="form-title">Postulantes Registrados</h2>
           {fetchingApplicants ? (
             <p className="loading-text">Cargando lista de postulantes...</p>
