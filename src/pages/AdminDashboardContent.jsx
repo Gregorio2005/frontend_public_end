@@ -29,8 +29,9 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
   };
 
   // Estado para los avisos
-  const [websiteNotice, setWebsiteNotice] = useState({ id: null, type: '', text: '', enabled: false }); // Inicializamos con valores vacíos, incluyendo id
+  const [websiteNotice, setWebsiteNotice] = useState({ id: null, name: '', note: '', enabled: false }); // Inicializamos con valores vacíos, incluyendo id
   const [noticesList, setNoticesList] = useState([]); // Lista para la tabla
+  const [noticeSearchTerm, setNoticeSearchTerm] = useState(''); // Buscador de avisos
 
   // Función para cargar la lista de mensajes registrados
   const loadNotices = async () => {
@@ -62,7 +63,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
 
   // Handler para cargar un mensaje de la tabla en el formulario
   const handleSelectNotice = (notice) => {
-    setWebsiteNotice({ id: notice.id, type: notice.name, text: notice.note, enabled: true });
+    setWebsiteNotice({ ...notice, enabled: true });
     showNotification("Mensaje cargado en el editor. Pulse 'Guardar' para aplicar al sitio web.");
   };
 
@@ -269,6 +270,15 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
     const ciMatch = ciStr.includes(term) || (termDigits !== '' && ciDigits.includes(termDigits));
 
     return nameMatch || ciMatch;
+  });
+
+  // Lógica de filtrado para el buscador de avisos
+  const filteredNotices = noticesList.filter(n => {
+    const term = noticeSearchTerm.toLowerCase().trim();
+    if (!term) return true;
+    const nameMatch = (n.name || '').toLowerCase().includes(term);
+    const noteMatch = (n.note || '').toLowerCase().includes(term);
+    return nameMatch || noteMatch;
   });
 
   return (
@@ -519,9 +529,9 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                 <label>Nombre del Comunicado (Ej: VACANTE ACTIVA: ADMINISTRADOR)</label>
                 <input 
                   type="text" 
-                  name="type" // Mapea a 'name' en la DB
+                  name="name" 
                   className="field-input" 
-                  value={websiteNotice.type} 
+                  value={websiteNotice.name} 
                   onChange={handleWebsiteNoticeChange} 
                   placeholder="Nombre de la vacante o comunicado" 
                   required 
@@ -530,9 +540,9 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
               <div className="form-field" style={{ flexBasis: '100%' }}>
                 <label>Descripción del Mensaje</label>
                 <textarea 
-                  name="text" // Mapea a 'note' en la DB
+                  name="note" 
                   className="field-input" 
-                  value={websiteNotice.text} 
+                  value={websiteNotice.note} 
                   onChange={handleWebsiteNoticeChange} 
                   placeholder="Detalle el mensaje que se mostrará en el sitio web..." 
                   rows="4" 
@@ -542,13 +552,14 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
               <button 
                 className="btn btn-primary" 
                 onClick={async () => {
+                  setLoading(true);
                   try {
-                    // Asegurarse de que ambos campos no estén vacíos antes de enviar
-                    if (!websiteNotice.type || !websiteNotice.text) {
+                    if (!websiteNotice.name || !websiteNotice.note) {
                       showNotification("El nombre y la descripción del aviso no pueden estar vacíos.", "error");
+                      setLoading(false);
                       return;
                     } 
-                    const updatedNotice = await updateWebsiteNotice(websiteNotice.type, websiteNotice.text);
+                    const updatedNotice = await updateWebsiteNotice(websiteNotice.name, websiteNotice.note);
                     setWebsiteNotice(updatedNotice); // Actualiza con la respuesta del backend
                     loadNotices(); // Refresca la tabla
                     showNotification("Comunicado del sitio web actualizado correctamente.");
@@ -568,9 +579,21 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
           {/* TABLA DE MENSAJES DISPONIBLES */}
           <div style={{ marginBottom: '2.5rem' }}>
             <h3 style={{ fontSize: '1rem', color: 'var(--secondary)', marginBottom: '1rem', fontWeight: '700' }}>
-              Historial de Mensajes Guardados
+              Historial de Avisos Registrados
             </h3>
             <div className="table-container-card">
+              <div className="table-filters">
+                <div className="table-search-wrapper">
+                  <span className="material-symbols-outlined">search</span>
+                  <input 
+                    type="text" 
+                    className="table-search-input" 
+                    placeholder="Buscar en el historial de avisos..." 
+                    value={noticeSearchTerm}
+                    onChange={(e) => setNoticeSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
               <div className="table-scroll-wrapper">
                 <table className="industrial-table">
                   <thead>
@@ -582,8 +605,8 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {noticesList.length > 0 ? (
-                      noticesList.map((item) => (
+                    {filteredNotices.length > 0 ? (
+                      filteredNotices.map((item) => (
                         <tr key={item.id}>
                           <td style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>#{item.id}</td>
                           <td style={{ fontWeight: '600' }}>{item.name}</td>
@@ -594,8 +617,9 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                               className={`btn ${websiteNotice.id === item.id ? 'btn-primary' : 'btn-secondary'}`}
                               style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} 
                               onClick={() => handleSelectNotice(item)}
+                              disabled={loading}
                             >
-                              Cargar en Editor
+                              {loading && websiteNotice.id === item.id ? 'Publicando...' : 'Publicar Aviso'}
                             </button>
                           </td>
                         </tr>

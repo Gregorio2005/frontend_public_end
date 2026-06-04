@@ -558,12 +558,12 @@ export const getWebsiteNotice = async () => {
     
     return { 
       enabled: !!latestNotice, 
-      text: latestNotice?.note || 'Actualmente no contamos con vacantes disponibles.', 
-      type: latestNotice?.name || 'none',
+      note: latestNotice?.note || 'Actualmente no contamos con vacantes disponibles.', 
+      name: latestNotice?.name || 'none',
       id: latestNotice?.id || null
     };
   } catch (error) {
-    return { enabled: false, text: "No disponible", type: 'none' };
+    return { enabled: false, note: "No disponible", name: 'none' };
   }
 };
 
@@ -587,7 +587,7 @@ export const updateWebsiteNotice = async (name, note) => {
       throw new Error(errorData.message || 'Error al actualizar aviso');
     }
     const res = await response.json();
-    return { id: res.data.id, type: res.data.name, text: res.data.note, enabled: true };
+    return { id: res.data.id, name: res.data.name, note: res.data.note, enabled: true };
   } catch (error) {
     throw error;
   }
