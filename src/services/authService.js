@@ -1,0 +1,302 @@
+/**
+ * Servicio para manejar la autenticación mediante fetch.
+ */
+const API_URL = '/api'; // Usamos un proxy definido en vite.config.js
+
+export const loginUser = async (username, password) => {
+  try {
+    // LLAMADA REAL AL BACKEND (Si no es el usuario Master)
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        user: username, // Cambiado de username a 'user' para el backend
+        password: password 
+      })
+    });
+
+    // 1. Verificamos si la respuesta es exitosa ANTES de parsear el JSON
+    if (!response.ok) {
+      let errorMessage = 'Error en la autenticación';
+      try {
+        // Intentamos extraer el mensaje de error del JSON del backend
+        const errorData = await response.json();
+        
+        // Si el mensaje del backend menciona la base de datos, aplicamos el texto solicitado
+        if (errorData.message && errorData.message.toLowerCase().includes('base de datos')) {
+          errorMessage = 'Conexion a la base de datos interrumpida';
+        } else {
+          errorMessage = errorData.message || errorMessage;
+        }
+      } catch (e) {
+        // Si hay un error 502, 500 o cualquier error de servidor que no devuelva JSON
+        if (response.status >= 500 || response.status === 502) {
+          errorMessage = 'Conexion a la base de datos interrumpida';
+        } else {
+          errorMessage = `Error del servidor (${response.status}): ${response.statusText}`;
+        }
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log("Respuesta del backend recibida:", data); // Esto te ayudará a ver qué llega realmente
+
+    // Si el backend devuelve un token, lo guardamos
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+    }
+
+    /**
+     * IMPORTANTE: Si llegamos aquí es porque response.ok es true.
+     * Forzamos success: true para que el LoginPage ejecute onLoginSuccess.
+     * Intentamos obtener el usuario de data.user o de la raíz del objeto (data).
+     */
+    return {
+      success: true,
+      user: data.user || data 
+    };
+  } catch (error) {
+    console.error("Error capturado en el service:", error);
+    // Si es un error de red (el backend no responde o el proxy falló)
+    if (error.name === 'TypeError') {
+      throw new Error('No se pudo establecer conexión con el servidor. Verifica que el backend esté encendido en el puerto 3000.');
+    }
+    throw error;
+  }
+};
+
+/**
+ * Servicio para registrar un nuevo usuario en la base de datos.
+ */
+export const registerUser = async (userData) => {
+  try {
+    const response = await fetch(`${API_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        // Si el backend requiere el token para autorizar la creación:
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify(userData)
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Error al registrar el usuario';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch (e) {
+        if (response.status >= 500) {
+          errorMessage = 'Conexion a la base de datos interrumpida';
+        }
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return { success: true, data };
+  } catch (error) {
+    console.error("Error en registro:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para obtener la lista de todos los usuarios.
+ */
+export const getUsers = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('No hay una sesión activa. Por favor, inicie sesión.');
+    }
+
+    const response = await fetch(`${API_URL}/users`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`, // ¡Confirmado: Esto es vital!
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) throw new Error('Sesión expirada o token inválido');
+      if (response.status === 403) throw new Error('No tienes permisos para ver esta lista');
+      throw new Error('Error al obtener la lista de usuarios');
+    }
+
+    const data = await response.json();
+    
+    // Normalización de respuesta: siempre devolvemos un array
+    if (data && Array.isArray(data.data)) return data.data;
+    if (Array.isArray(data)) return data;
+    return []; 
+  } catch (error) {
+    console.error("Error obteniendo usuarios:", error);
+    throw error;
+  }
+};
+
+export const updateUser = async (userId, userData) => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    const response = await fetch(`${API_URL}/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(userData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Error del servidor: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en updateUser service:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para solicitar la recuperación de contraseña.
+ */
+export const forgotPassword = async (email) => {
+  try {
+    const response = await fetch(`${API_URL}/auth/forgot_password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Error al procesar la solicitud');
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error en forgotPassword service:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para actualizar el perfil del usuario autenticado (propio).
+ */
+export const updateProfile = async (profileData) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/auth/profile_update`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      // profileData ahora contendrá { currentPassword, password: newPassword, ...otros }
+      body: JSON.stringify(profileData) 
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      // El backend ahora enviará mensajes específicos como 'La contraseña actual es incorrecta.'
+      // Es bueno pasarlos directamente al usuario.
+      throw new Error(data.message || `Error ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  } catch (error) {
+    console.error("Error en updateProfile service:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para obtener la lista de todos los postulantes desde la tabla 'postulantes'.
+ */
+export const getApplicants = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('No hay una sesión activa. Por favor, inicie sesión.');
+    }
+
+    const response = await fetch(`${API_URL}/applicants`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al obtener la lista de postulantes');
+    }
+
+    const data = await response.json();
+    // Retornamos los datos normalizados (asumiendo que el backend los envía en .data o raíz)
+    return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Error obteniendo postulantes:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para enviar una nueva postulación desde el sitio web público.
+ */
+export const submitApplication = async (applicantData) => {
+  try {
+    const response = await fetch(`${API_URL}/applicants`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(applicantData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al enviar la postulación');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en submitApplication:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para actualizar el estado de un postulante.
+ */
+export const updateApplicantStatus = async (applicantId, newStatus) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/applicants/${applicantId}/status`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ status: newStatus })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al actualizar el estado');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en updateApplicantStatus:", error);
+    throw error;
+  }
+};
