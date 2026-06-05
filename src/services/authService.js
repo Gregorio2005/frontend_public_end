@@ -519,6 +519,50 @@ export const updateInsumo = async (id, insumoData) => {
 };
 
 /** 
+ * Obtiene un aviso específico por su ID desde el backend.
+ */
+export const getNoticeById = async (id) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/website-notice/${id}`, {
+      method: 'GET',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) throw new Error('Error al recuperar el aviso específico');
+    
+    const data = await response.json();
+    return data.data;
+  } catch (error) {
+    console.error("Error en getNoticeById API:", error);
+    throw error;
+  }
+};
+
+/** 
+ * Publica oficialmente un aviso (marca status = true en la DB).
+ */
+export const publishNotice = async (id) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/website-notice/${id}/publish`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) throw new Error('No se pudo publicar el aviso.');
+    return await response.json();
+  } catch (error) {
+    console.error("Error en publishNotice API:", error);
+    throw error;
+  }
+};
+
+/** 
  * Obtiene la lista de todos los avisos registrados en 'mensajes_web'.
  */
 export const getNoticesList = async () => {
@@ -559,7 +603,7 @@ export const getWebsiteNotice = async () => {
     return { 
       enabled: !!latestNotice, 
       note: latestNotice?.note || 'Actualmente no contamos con vacantes disponibles.', 
-      name: latestNotice?.name || 'none',
+      name: latestNotice?.name || '',
       id: latestNotice?.id || null
     };
   } catch (error) {

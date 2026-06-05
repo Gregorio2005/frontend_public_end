@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus, updateProfile, updateWebsiteNotice, getWebsiteNotice, getNoticesList } from '../services/authService'; 
+import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus, updateProfile, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
  
 const AdminDashboardContent = ({ activeAction, refreshKey }) => {
@@ -32,6 +32,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
   const [websiteNotice, setWebsiteNotice] = useState({ id: null, name: '', note: '', enabled: false }); // Inicializamos con valores vacíos, incluyendo id
   const [noticesList, setNoticesList] = useState([]); // Lista para la tabla
   const [noticeSearchTerm, setNoticeSearchTerm] = useState(''); // Buscador de avisos
+  const [processingId, setProcessingId] = useState(null); // Para saber qué fila se está cargando
 
   // Función para cargar la lista de mensajes registrados
   const loadNotices = async () => {
@@ -48,8 +49,9 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
       loadNotices();
       // Cargamos el aviso actual para mostrarlo en el formulario
       getWebsiteNotice().then(currentNotice => {
-        // Aseguramos que el id se guarde si existe
-        setWebsiteNotice({ ...currentNotice, id: currentNotice.id || null });
+        if (currentNotice && currentNotice.id) {
+          setWebsiteNotice({ ...currentNotice });
+        }
       });
       
     }
@@ -61,10 +63,28 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
     setWebsiteNotice(prev => ({ ...prev, [name]: value }));
   };
 
-  // Handler para cargar un mensaje de la tabla en el formulario
-  const handleSelectNotice = (notice) => {
-    setWebsiteNotice({ ...notice, enabled: true });
-    showNotification("Mensaje cargado en el editor. Pulse 'Guardar' para aplicar al sitio web.");
+  // Handler para publicar oficialmente un mensaje de la tabla
+  const handleSelectNotice = async (notice) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Confirmar Publicación',
+      message: `¿Desea establecer "${notice.name}" como el aviso activo del sitio web?`,
+      onConfirm: async () => {
+        setProcessingId(notice.id);
+        try {
+          await publishNotice(notice.id);
+          const freshNotice = await getNoticeById(notice.id);
+          setWebsiteNotice({ ...freshNotice, enabled: true });
+          await loadNotices(); // Refrescar tabla para actualizar el botón resaltado
+          showNotification("El aviso ha sido publicado correctamente.");
+        } catch (error) {
+          showNotification(`Error: ${error.message}`, "error");
+        } finally {
+          setProcessingId(null);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
   };
 
   // Estados para la lista de usuarios
@@ -613,13 +633,13 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                           <td style={{ fontSize: '0.85rem' }}>{item.note}</td>
                           <td className="text-center">
                             <button 
-                              // Aplica btn-primary si el item.id coincide con el id del aviso cargado
-                              className={`btn ${websiteNotice.id === item.id ? 'btn-primary' : 'btn-secondary'}`}
+                              // Resaltamos si el item tiene status true o si es el cargado actualmente
+                              className={`btn ${item.status || String(websiteNotice.id) === String(item.id) ? 'btn-primary' : 'btn-secondary'}`}
                               style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} 
                               onClick={() => handleSelectNotice(item)}
-                              disabled={loading}
+                              disabled={processingId !== null || item.status}
                             >
-                              {loading && websiteNotice.id === item.id ? 'Publicando...' : 'Publicar Aviso'}
+                              {item.status ? 'Publicado' : (processingId === item.id ? 'Cargando...' : 'Publicar Aviso')}
                             </button>
                           </td>
                         </tr>
