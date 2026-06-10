@@ -324,6 +324,158 @@ export const getApplicants = async () => {
 };
 
 /**
+ * Servicio para obtener la lista de todos los proveedores desde la tabla 'suppliers'.
+ */
+export const getSuppliers = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('No hay una sesión activa. Por favor, inicie sesión.');
+    }
+
+    const response = await fetch(`${API_URL}/suppliers`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al obtener la lista de proveedores');
+    }
+
+    const data = await response.json();
+    return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Error obteniendo proveedores:", error);
+    throw error;
+  }
+};
+
+/**
+ * Servicio para registrar un nuevo proveedor.
+ */
+export const registerSupplier = async (supplierData) => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('No hay una sesión activa. Por favor, inicie sesión.');
+    }
+
+    const response = await fetch(`${API_URL}/suppliers`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(supplierData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al registrar el proveedor');
+    }
+    return await response.json();
+  } catch (error) {
+    // Si es un error de red (el backend no responde o el proxy falló)
+    if (error.name === 'TypeError') {
+      throw new Error('No se pudo establecer conexión con el servidor para registrar el proveedor. Verifica que el backend esté encendido y el proxy de Vite configurado.');
+    }
+    throw error;
+  }
+};
+
+/**
+ * Servicio para crear una nueva entrada en la tabla master_inputs.
+ */
+export const assignMasterInput = async (assignmentData) => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('No hay una sesión activa.');
+    }
+
+    const response = await fetch(`${API_URL}/master-inputs`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(assignmentData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al realizar la asignación en master_inputs');
+    }
+    return await response.json();
+  } catch (error) {
+    if (error.name === 'TypeError') {
+      throw new Error('No se pudo establecer conexión con el servidor.');
+    }
+    throw error;
+  }
+};
+
+/**
+ * Elimina una asignación del maestro de insumos.
+ */
+export const deleteMasterInput = async (id) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/master-inputs/${id}`, {
+      method: 'DELETE',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('No se pudo eliminar la asignación.');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error en deleteMasterInput:", error);
+    throw error;
+  }
+};
+
+/**
+ * Obtiene los insumos del maestro filtrados directamente por el ID del proveedor.
+ */
+export const getMasterInputsBySupplier = async (supplierId) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/master-inputs?suppliers_id=${supplierId}`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al obtener los insumos del proveedor');
+    }
+
+    const data = await response.json();
+    return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Error en getMasterInputsBySupplier:", error);
+    throw error;
+  }
+};
+
+/**
  * Servicio para enviar una nueva postulación desde el sitio web público.
  */
 export const submitApplication = async (applicantData) => {
@@ -414,6 +566,34 @@ export const getInsumos = async () => {
     return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
   } catch (error) {
     console.error("Error obteniendo insumos:", error);
+    throw error;
+  }
+};
+
+/**
+ * Obtiene la lista de tipos de insumo desde la tabla 'types_inputs'.
+ */
+export const getTypeInputs = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/type-inputs`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al obtener los tipos de insumo del servidor');
+    }
+
+    const data = await response.json();
+    return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Error obteniendo tipos de insumo:", error);
     throw error;
   }
 };

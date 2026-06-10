@@ -276,7 +276,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
       case 'Administrador':
         return <AdminDashboardContent activeAction={activeAction} refreshKey={refreshKey} />;
       case 'Jefe de Calidad':
-        return <JefeCalidadDashboardContent activeAction={activeAction} />;
+        return <JefeCalidadDashboardContent activeAction={activeAction} user={profileData || user} />;
       case 'Jefe de Ingeniería':
         return <JefeIngenieriaDashboardContent activeAction={activeAction} user={profileData || user} />;
       case 'Trabajador':
@@ -454,15 +454,11 @@ const Dashboard = ({ user = {}, onLogout }) => {
 
           {userRole === 'Jefe de Calidad' && (
             <>
-              <button className={`nav-link ${activeAction === 'add_proveedor' ? 'active' : ''}`} onClick={() => setActiveAction('add_proveedor')}>
+              <button className={`nav-link ${activeAction === 'proveedores' ? 'active' : ''}`} onClick={() => handleActionClick('proveedores')}>
                 <span className="material-symbols-outlined">store</span>
-                Agregar Proveedor
+                Proveedores
               </button>
-              <button className={`nav-link ${activeAction === 'edit_proveedor' ? 'active' : ''}`} onClick={() => setActiveAction('edit_proveedor')}>
-                <span className="material-symbols-outlined">edit_note</span>
-                Modificar Proveedor
-              </button>
-              <button className={`nav-link ${activeAction === 'charts' ? 'active' : ''}`} onClick={() => setActiveAction('charts')}>
+              <button className={`nav-link ${activeAction === 'charts' ? 'active' : ''}`} onClick={() => handleActionClick('charts')}>
                 <span className="material-symbols-outlined">bar_chart</span>
                 Gráficos
               </button>
@@ -471,13 +467,13 @@ const Dashboard = ({ user = {}, onLogout }) => {
 
           {userRole === 'Jefe de Ingeniería' && (
             <>
-              <button className={`nav-link ${activeAction === 'add_insumo' ? 'active' : ''}`} onClick={() => setActiveAction('add_insumo')}>
+              <button className={`nav-link ${activeAction === 'insumos' ? 'active' : ''}`} onClick={() => handleActionClick('insumos')}>
                 <span className="material-symbols-outlined">precision_manufacturing</span>
-                Agregar Insumo
+                Insumos
               </button>
-              <button className={`nav-link ${activeAction === 'edit_insumo' ? 'active' : ''}`} onClick={() => setActiveAction('edit_insumo')}>
-                <span className="material-symbols-outlined">edit_square</span>
-                Modificar Insumo
+              <button className={`nav-link ${activeAction === 'inspeccion_validacion' ? 'active' : ''}`} onClick={() => handleActionClick('inspeccion_validacion')}>
+                <span className="material-symbols-outlined">fact_check</span>
+                Validacion de Inspeccion
               </button>
             </>
           )}

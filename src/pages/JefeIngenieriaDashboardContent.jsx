@@ -29,6 +29,9 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
   const [selectedEditType, setSelectedEditType] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Estado para controlar la sub-vista (Lista/Modificar vs Agregar)
+  const [subView, setSubView] = useState('list');
+
   // Estado para notificaciones personalizadas (Toast)
   const [notification, setNotification] = useState({ message: '', type: 'success', visible: false });
 
@@ -42,18 +45,16 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
   // Carga inicial de datos desde la base de datos
   // Ahora getInsumos solo se llama si no estamos en modo edición con filtro específico
   useEffect(() => {
-    if (activeAction !== 'edit_insumo') {
-      const loadData = async () => {
-        try {
-          const data = await getInsumos();
-          setInsumosList(data);
-        } catch (error) {
-          console.error("Error al cargar el catálogo:", error);
-        }
-      };
-      loadData();
-    }
-  }, [activeAction]);
+    const loadData = async () => {
+      try {
+        const data = await getInsumos();
+        setInsumosList(data);
+      } catch (error) {
+        console.error("Error al cargar el catálogo:", error);
+      }
+    };
+    if (subView === 'list' && !selectedEditType) loadData();
+  }, [activeAction, subView, selectedEditType]);
 
   // Limpiar estados cuando cambia la acción principal para forzar nueva búsqueda
   useEffect(() => {
@@ -61,7 +62,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     setEditFormData(null);
     setSelectedInsumoId('');
     setSearchTerm('');
-    if (activeAction === 'edit_insumo') setInsumosList([]);
+    setSubView('list');
   }, [activeAction]);
 
   const handleChange = (e) => {
@@ -189,7 +190,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
 
   // Mapeo para mostrar los nombres de los tipos en español en la tabla y etiquetas
   const typeNamesSpanish = {
-    'Stuffing': 'Stuffing (Estopas)',
+    'Stuffing': 'Estoperas',
     'Stamps': 'Sellos',
     'Oring': 'O-Rings',
     'Chemicals': 'Químicos',
@@ -258,8 +259,24 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
         <span className="notification-message">{notification.message}</span>
       </div>
 
-      {/* Contenido condicional según la acción seleccionada */}
-      {activeAction === 'add_insumo' && (
+      {activeAction === 'insumos' && (
+        <>
+          <div className="tab-navigation" style={{ marginBottom: '2rem', display: 'flex', gap: '1rem' }}>
+            <button 
+              className={`btn ${subView === 'list' ? 'btn-primary' : 'btn-secondary'}`} 
+              onClick={() => setSubView('list')}
+            >
+              Ver y Modificar Insumos
+            </button>
+            <button 
+              className={`btn ${subView === 'add' ? 'btn-primary' : 'btn-secondary'}`} 
+              onClick={() => setSubView('add')}
+            >
+              Registrar Nuevo Insumo
+            </button>
+          </div>
+
+          {subView === 'add' ? (
         <div className="form-container">
           <h2 className="form-title">Registrar Nuevo Insumo</h2>
           <form className="admin-form" onSubmit={handleSubmit}>
@@ -268,7 +285,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                 <label>Tipo de Insumo</label>
                 <select name="tipo" value={formData.tipo} onChange={handleChange} required className="field-input">
                   <option value="" disabled>Seleccione un tipo...</option>
-                  <option value="Stuffing">Stuffing (Estopas)</option>
+                  <option value="Stuffing">Estoperas</option>
                   <option value="Stamps">Sellos</option>
                   <option value="Oring">O-Rings</option>
                   <option value="Chemicals">Químicos</option>
@@ -333,11 +350,8 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
             )}
           </form>
         </div>
-      )}
-
-      {activeAction === 'edit_insumo' && (
+      ) : (
         <div className="form-container">
-          <h2 className="form-title">Modificar Insumo Existente</h2>
 
           {/* Selector de Tipo Obligatorio para búsqueda específica */}
           <div className="form-grid" style={{ marginBottom: '2rem' }}>
@@ -349,7 +363,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                 className="field-input"
               >
                 <option value="">Seleccione un tipo...</option>
-                <option value="Stuffing">Stuffing (Estopas)</option>
+                <option value="Stuffing">Estoperas</option>
                 <option value="Stamps">Sellos</option>
                 <option value="Oring">O-Rings</option>
                 <option value="Chemicals">Químicos</option>
@@ -471,6 +485,15 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
           )}
             </>
           )}
+        </div>
+      )}
+        </>
+      )}
+
+      {activeAction === 'inspeccion_validacion' && (
+        <div className="form-container">
+          <h2 className="form-title">Validación de Inspección</h2>
+          <p className="loading-text">Esta sección se está creando con el proposito de validar las inspeccones que quedaron en "Observación".</p>
         </div>
       )}
 
