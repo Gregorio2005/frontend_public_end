@@ -280,7 +280,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
       case 'Jefe de Ingeniería':
         return <JefeIngenieriaDashboardContent activeAction={activeAction} user={profileData || user} />;
       case 'Trabajador':
-        return <TrabajadorDashboardContent activeAction={activeAction} />;
+        return <TrabajadorDashboardContent activeAction={activeAction} user={profileData || user} />;
       default:
         return (
           <section className="status-card error">
@@ -435,6 +435,10 @@ const Dashboard = ({ user = {}, onLogout }) => {
               <button className={`nav-link ${activeAction === 'applicants' ? 'active' : ''}`} onClick={() => handleActionClick('applicants')}>
                 <span className="material-symbols-outlined">assignment_ind</span>
                 Postulantes
+              </button>
+              <button className={`nav-link ${activeAction === 'view_inspections' ? 'active' : ''}`} onClick={() => handleActionClick('view_inspections')}>
+                <span className="material-symbols-outlined">visibility</span>
+                Ver Inspecciones
               </button>
             </>
           )}

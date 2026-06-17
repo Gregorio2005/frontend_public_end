@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus, updateProfile, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice } from '../services/authService'; 
+import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus, updateProfile, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
  
 const AdminDashboardContent = ({ activeAction, refreshKey }) => {
@@ -28,6 +28,86 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
     }, 4000);
   };
 
+  // Mapeos y Helpers para Visualización de Inspecciones
+  const idToSpanishType = {
+    1: 'Estoperas', 2: 'Sellos', 3: 'O-Rings', 4: 'Químicos', 5: 'Bolsas',
+    6: 'Cartón', 7: 'Estuches', 8: 'Termoplásticos', 9: 'Empaquetaduras', 10: 'Collares'
+  };
+
+  const measurementTypes = ['Estoperas', 'Sellos', 'O-Rings', 'Químicos', 'Bolsas', 'Cartón', 'Estuches', 'Termoplásticos', 'Empaquetaduras', 'Collares'];
+
+  const getSpecsByTypeId = (typeId) => {
+    const specs = {
+      1: ['internal_diameter', 'external_diameter', 'height'],
+      2: ['internal_diameter', 'external_diameter', 'height_a', 'height_b'],
+      3: ['internal_diameter', 'height'],
+      4: ['presentation', 'batch_date', 'production_test'],
+      5: ['height', 'width', 'art', 'caliber'],
+      6: ['height', 'width', 'caliber'],
+      7: ['caliber', 'armed'],
+      8: ['visual'],
+      9: ['thickness_a', 'thickness_b', 'thickness_c', 'thickness_d', 'ring_diameter_a', 'ring_diameter_b', 'ring_diameter_c', 'ring_diameter_d'],
+      10: ['internal_diameter', 'height', 'joint'],
+    };
+    return specs[typeId] || [];
+  };
+
+  const getLabel = (key) => {
+    const labels = {
+      internal_diameter: 'Diámetro Interno Ø',
+      external_diameter: 'Diámetro Externo Ø',
+      height: 'Altura',
+      height_a: 'Altura A',
+      height_b: 'Altura B',
+      width: 'Ancho',
+      batch_date: 'Fecha de Lote',
+      presentation: 'Presentación',
+      production_test: 'Prueba de Producción',
+      visual: 'Inspección Visual',
+      art: 'Arte',
+      caliber: 'Calibre',
+      armed: 'Armado',
+      joint: 'Unión',
+      thickness_a: 'Espesor A', thickness_b: 'Espesor B', thickness_c: 'Espesor C', thickness_d: 'Espesor D',
+      ring_diameter_a: 'Ø de Anillo A', ring_diameter_b: 'Ø de Anillo B', ring_diameter_c: 'Ø de Anillo C', ring_diameter_d: 'Ø de Anillo D'
+    };
+    return labels[key] || key;
+  };
+
+  const getMeasurementStatus = (value, allowed, key) => {
+    // Si es un campo de fecha, no aplica evaluación de estado (Aprobado/Rechazado)
+    if (key.includes('date')) return { text: '', color: 'transparent' };
+
+    // Caso para campos booleanos (Químicos, Termoplásticos, etc.)
+    if (['presentation', 'production_test', 'visual', 'joint'].includes(key)) {
+      if (value === undefined || value === '') return { text: '', color: 'transparent' };
+      return value === true ? { text: 'Aprobado', color: '#10b981' } : { text: 'Rechazado', color: '#ef4444' };
+    }
+
+    // Caso para medidas numéricas
+    if (value === undefined || value === '' || allowed === undefined || isNaN(Number(allowed))) return { text: '', color: 'transparent' };
+    const val = Number(value);
+    const target = Number(allowed);
+    
+    if (val === target) return { text: 'Aprobado', color: '#10b981' }; 
+    
+    const diff = Math.abs(val - target);
+    if (diff <= 0.2) return { text: 'Observación', color: '#fbbf24' };
+    
+    return { text: 'Rechazado', color: '#ef4444' };
+  };
+
+  // Estados para la Visualización de Inspecciones
+  const [inspectionInvoices, setInspectionInvoices] = useState([]);
+  const [selectedInvoiceItems, setSelectedInvoiceItems] = useState([]);
+  const [inspectionHistory, setInspectionHistory] = useState([]);
+  const [inspectionView, setInspectionView] = useState({
+    invoiceId: '',
+    insumoIndex: '',
+    currentStep: 1,
+    tipo: ''
+  });
+
   // Estado para los avisos
   const [websiteNotice, setWebsiteNotice] = useState({ id: null, name: '', note: '', enabled: false }); // Inicializamos con valores vacíos, incluyendo id
   const [noticesList, setNoticesList] = useState([]); // Lista para la tabla
@@ -54,6 +134,11 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
         }
       });
       
+    }
+
+    if (activeAction === 'view_inspections') {
+      setLoading(true);
+      getBills().then(setInspectionInvoices).catch(console.error).finally(() => setLoading(false));
     }
   }, [activeAction]); // Depende de activeAction para recargar al entrar a la sección
 
@@ -150,6 +235,39 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
       loadApplicants();
     }
   }, [activeAction, subView, refreshKey]);
+
+  const handleInspectionViewChange = async (e) => {
+    const { name, value } = e.target;
+    if (name === 'invoiceId') {
+      setLoading(true);
+      try {
+        const items = await getBillInputsByBillId(value);
+        // Organizamos los insumos por tipo y referencia tal cual como en trabajador
+        const sortedItems = items.sort((a, b) => {
+          if (a.type_inputs_id !== b.type_inputs_id) return a.type_inputs_id - b.type_inputs_id;
+          return (a.reference || '').localeCompare(b.reference || '');
+        });
+        setSelectedInvoiceItems(sortedItems);
+        setInspectionView({ invoiceId: value, insumoIndex: '', currentStep: 1, tipo: '' });
+        setInspectionHistory([]);
+      } catch (err) { showNotification("Error al cargar insumos", "error"); }
+      finally { setLoading(false); }
+    } else if (name === 'insumoIndex') {
+      const ins = selectedInvoiceItems[value];
+      setLoading(true);
+      try {
+        const results = await getInspectionResults(ins.type_inputs_id, ins.id);
+        setInspectionHistory(results);
+        setInspectionView(prev => ({ 
+          ...prev, 
+          insumoIndex: value, 
+          currentStep: 1,
+          tipo: idToSpanishType[ins.type_inputs_id] || 'Desconocido'
+        }));
+      } catch (err) { showNotification("Error al cargar inspecciones", "error"); }
+      finally { setLoading(false); }
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -714,6 +832,143 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
               </table>
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {activeAction === 'view_inspections' && (
+        <div className="form-container">
+          <h2 className="form-title">Consulta de Inspecciones Realizadas</h2>
+          <div className="form-grid" style={{ marginBottom: '2rem' }}>
+            <div className="form-field">
+              <label>Seleccionar Factura</label>
+              <select name="invoiceId" className="field-input" value={inspectionView.invoiceId} onChange={handleInspectionViewChange}>
+                <option value="" disabled>Seleccione una factura...</option>
+                {inspectionInvoices.map(inv => <option key={inv.id} value={inv.id}>{inv.bill_nro}</option>)}
+              </select>
+            </div>
+            <div className="form-field">
+              <label>Seleccionar Insumo</label>
+              <select name="insumoIndex" className="field-input" value={inspectionView.insumoIndex} onChange={handleInspectionViewChange} disabled={!inspectionView.invoiceId}>
+                <option value="" disabled>Seleccione referencia...</option>
+                {selectedInvoiceItems.map((ins, idx) => (
+                  <option key={ins.id} value={idx}>{ins.reference}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {inspectionHistory.length > 0 && selectedInvoiceItems[inspectionView.insumoIndex] && (
+            <div className="table-container-card" style={{ marginTop: '2rem' }}>
+              <h3 className="form-subtitle">
+                Resultados para: <span className="role-badge">{inspectionView.tipo}</span>
+              </h3>
+              
+              <div className="form-grid">
+                <div className="form-field form-field-inline" style={{ gridColumn: 'span 2' }}>
+                  <div className="field-input-group">
+                    <span className="input-group-addon" style={{ background: 'var(--primary)', color: 'white' }}>
+                      Muestra {inspectionView.currentStep} de {inspectionHistory.length}
+                    </span>
+                  </div>
+                </div>
+
+                {getSpecsByTypeId(selectedInvoiceItems[inspectionView.insumoIndex].type_inputs_id).map(key => {
+                  const currentRecord = inspectionHistory[inspectionView.currentStep - 1];
+                  const savedValue = currentRecord?.[key];
+                  const allowedValue = selectedInvoiceItems[inspectionView.insumoIndex][key];
+                  const isBool = ['presentation', 'production_test', 'visual', 'joint'].includes(key);
+                  const isDate = key.includes('date');
+                  const status = getMeasurementStatus(savedValue, allowedValue, key);
+                  
+                  // Lógica específica para Químicos (Tipo 4): 
+                  // No mostrar Fecha de Lote y Prueba de Producción si la Presentación fue aprobada originalmente
+                  if (selectedInvoiceItems[inspectionView.insumoIndex].type_inputs_id === 4) {
+                    if ((key === 'batch_date' || key === 'production_test') && currentRecord?.presentation !== false) {
+                      return null;
+                    }
+                  }
+
+                  return (
+                    <div className="form-field form-field-measurement" style={{ gridColumn: 'span 2' }} key={key}>
+                      <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
+                        {getLabel(key)} {!isBool && !isDate && '(mm)'}
+                      </label>
+                      <div className="measurement-input-group" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', width: '100%' }}>
+                        {!isBool && !isDate && (
+                          <span className="measurement-label" style={{ whiteSpace: 'nowrap', color: 'var(--secondary)', fontSize: '0.9rem', minWidth: '120px' }}>
+                            Permitido: {Number(allowedValue || 0).toFixed(2)}
+                          </span>
+                        )}
+                        
+                        {isBool ? (
+                          <div className="field-input" style={{ flex: '1', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', fontWeight: '500' }}>
+                            <span className="material-symbols-outlined" style={{ marginRight: '8px', color: savedValue ? '#10b981' : '#ef4444' }}>
+                              {savedValue ? 'check_circle' : 'cancel'}
+                            </span>
+                            {savedValue === true ? 'Aprobado' : (savedValue === false ? 'Rechazado' : 'N/A')}
+                          </div>
+                        ) : (
+                          <input 
+                            type="text" 
+                            className="field-input" 
+                            style={{ flex: '1', backgroundColor: '#f8fafc' }} 
+                            value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')} 
+                            readOnly 
+                          />
+                        )}
+                        <span style={{ color: status.color, fontWeight: 'bold', minWidth: '100px', textAlign: 'right' }}>
+                          {status.text}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Dictamen General de la Muestra */}
+                <div style={{ gridColumn: 'span 2', marginTop: '1rem', padding: '1rem', backgroundColor: 'var(--surface-variant)', borderRadius: '8px', borderLeft: '4px solid var(--primary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase' }}>Dictamen de la Inspección:</span>
+                    <span className="role-badge" style={{ 
+                      backgroundColor: inspectionHistory[inspectionView.currentStep - 1]?.status === 'Aprobado' ? '#10b981' : 
+                                     (inspectionHistory[inspectionView.currentStep - 1]?.status === 'Rechazado' ? '#ef4444' : '#fbbf24'),
+                      color: 'white',
+                      fontWeight: '800'
+                    }}>
+                      {inspectionHistory[inspectionView.currentStep - 1]?.status || 'SIN ESTADO'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--secondary)' }}>comment</span>
+                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--on-surface)' }}>
+                      <strong>Observación:</strong> {inspectionHistory[inspectionView.currentStep - 1]?.observation || 'Sin observaciones registradas.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-actions" style={{ marginTop: '2rem', display: 'flex', gap: '1rem' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setInspectionView(prev => ({ ...prev, currentStep: Math.max(prev.currentStep - 1, 1) }))} 
+                  disabled={inspectionView.currentStep === 1}
+                >
+                  <span className="material-symbols-outlined">arrow_back</span> Anterior
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-primary" 
+                  onClick={() => setInspectionView(prev => ({ ...prev, currentStep: Math.min(prev.currentStep + 1, inspectionHistory.length) }))} 
+                  disabled={inspectionView.currentStep === inspectionHistory.length}
+                >
+                  Siguiente <span className="material-symbols-outlined">arrow_forward</span>
+                </button>
+              </div>
+            </div>
+          )}
+          {inspectionView.insumoIndex !== '' && inspectionHistory.length === 0 && !loading && (
+            <p className="no-data text-center">No se encontraron inspecciones realizadas para este ítem.</p>
           )}
         </div>
       )}

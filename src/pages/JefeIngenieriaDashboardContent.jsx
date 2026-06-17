@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInsumos, registerInsumo, updateInsumo, getInsumosByType } from '../services/authService';
+import { getInsumos, registerInsumo, updateInsumo, getInsumosByType, getBills, getBillInputsByBillId, getInspectionResults, updateInspection } from '../services/authService';
 
 const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
   const [formData, setFormData] = useState({
@@ -29,6 +29,19 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
   const [selectedEditType, setSelectedEditType] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Estados para la Validación de Inspecciones
+  const [invoices, setInvoices] = useState([]);
+  const [selectedInvoiceItems, setSelectedInvoiceItems] = useState([]);
+  const [inspectionHistory, setInspectionHistory] = useState([]);
+  const [validationView, setValidationView] = useState({
+    invoiceId: '',
+    insumoIndex: '',
+    currentStep: 1
+  });
+
+  // Estado para recolectar decisiones de cada característica antes de enviar el dictamen global
+  const [pendingDecisions, setPendingDecisions] = useState({});
+
   // Estado para controlar la sub-vista (Lista/Modificar vs Agregar)
   const [subView, setSubView] = useState('list');
 
@@ -40,6 +53,117 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     setTimeout(() => {
       setNotification(prev => ({ ...prev, visible: false }));
     }, 4000);
+  };
+
+  // Lógica de evaluación de medidas (Idéntica a Admin)
+  const getMeasurementStatus = (value, allowed, key) => {
+    if (key.includes('date')) return { text: '', color: 'transparent' };
+
+    if (['presentation', 'production_test', 'visual', 'joint'].includes(key)) {
+      if (value === undefined || value === '') return { text: '', color: 'transparent' };
+      return value === true ? { text: 'Aprobado', color: '#10b981' } : { text: 'Rechazado', color: '#ef4444' };
+    }
+
+    // Caso para medidas numéricas
+    if (value === undefined || value === '' || allowed === undefined || isNaN(Number(allowed))) return { text: '', color: 'transparent' };
+    const val = Number(value);
+    const target = Number(allowed);
+    
+    if (val === target) return { text: 'Aprobado', color: '#10b981' }; 
+    
+    const diff = Math.abs(val - target);
+    if (diff <= 0.2) return { text: 'Observación', color: '#fbbf24' };
+    
+    return { text: 'Rechazado', color: '#ef4444' };
+  };
+
+  // Lógica para enviar el dictamen de una característica específica (Varios PUTs por muestra)
+  const handleDecision = async (newStatus, specKey, boolValue = null) => {
+    const currentInsumo = selectedInvoiceItems[validationView.insumoIndex];
+    const currentRecord = inspectionHistory[validationView.currentStep - 1];
+    const typeId = currentInsumo.type_inputs_id;
+    
+    let finalObservation = "";
+
+    // Lógica especial para Químicos (Mismos mensajes que el Trabajador)
+    if (typeId === 4) {
+      if (specKey === 'presentation' && boolValue === true) {
+        finalObservation = "Lote aprovado";
+      } else if (specKey === 'production_test' && boolValue === false) {
+        finalObservation = "Rechazado por no cumplir con los valores esperados";
+      } else {
+        finalObservation = newStatus === 'Aprobado' ? `Aprobado condicionado a: ${getLabel(specKey)}` : `Rechazado por no cumplir en: ${getLabel(specKey)}`;
+      }
+    } else {
+      if (newStatus === 'Aprobado') {
+        const val = currentRecord[specKey];
+        const isTechnical = !(['presentation', 'production_test', 'visual', 'joint'].includes(specKey) || specKey.includes('date'));
+        const formattedVal = isTechnical ? `${Number(val).toFixed(3)} mm` : val;
+        finalObservation = `Aprobado condicionado a: ${getLabel(specKey)} con valor experimental de ${formattedVal}`;
+      } else {
+        finalObservation = `Rechazado por no cumplir con los valores esperados en: ${getLabel(specKey)}`;
+      }
+    }
+
+    // Feedback visual local y recolección para estatus global
+    const updatedDecisions = {
+      ...pendingDecisions,
+      [specKey]: { status: newStatus, msg: finalObservation }
+    };
+    setPendingDecisions(updatedDecisions);
+
+    // Cálculo del estatus global: se mantiene en 'Observacion' hasta que todo esté decidido o haya un rechazo
+    const obsKeys = getSpecsByTypeId(currentInsumo.type_inputs_id)
+      .filter(k => getMeasurementStatus(currentRecord[k], currentInsumo[k], k).text === 'Observación');
+    
+    let finalStatus = 'Observacion';
+    if (Object.values(updatedDecisions).some(d => d.status === 'Rechazado')) {
+      finalStatus = 'Rechazado';
+    } else if (obsKeys.every(k => updatedDecisions[k]?.status === 'Aprobado')) {
+      finalStatus = 'Aprobado';
+    }
+
+    setLoading(true);
+    try {
+      const techKeys = getSpecsByTypeId(currentInsumo.type_inputs_id);
+      const payload = {
+        bill_inputs_id: currentInsumo.bill_inputs_id,
+        users_id: currentRecord.users_id,
+        review_date: currentRecord.review_date ? currentRecord.review_date.split('T')[0] : new Date().toISOString().split('T')[0],
+        delivery_date: currentRecord.delivery_date ? currentRecord.delivery_date.split('T')[0] : new Date().toISOString().split('T')[0],
+        status: finalStatus,
+        observation: finalObservation
+      };
+
+      techKeys.forEach(key => {
+        const isBool = ['presentation', 'production_test', 'visual', 'joint'].includes(key);
+        const isDate = key.includes('date');
+        
+        // Si es la característica que estamos dictaminando y es booleana, usamos el nuevo valor
+        if (key === specKey && isBool && boolValue !== null) {
+          payload[key] = boolValue;
+        } else {
+          payload[key] = (isBool || isDate) ? currentRecord[key] : (parseFloat(currentRecord[key]) || 0);
+        }
+      });
+
+      await updateInspection(currentInsumo.type_inputs_id, currentRecord.id, payload);
+      showNotification(`Dictamen de ${getLabel(specKey)} enviado correctamente.`, "success");
+
+      // Si el dictamen global ya no es 'Observacion', removemos la muestra automáticamente tras un momento
+      if (finalStatus !== 'Observacion') {
+        setTimeout(() => {
+          setPendingDecisions({});
+          const remaining = inspectionHistory.filter((_, i) => i !== validationView.currentStep - 1);
+          setInspectionHistory(remaining);
+          if (remaining.length === 0) setValidationView(prev => ({ ...prev, insumoIndex: '' }));
+        }, 1500);
+      }
+    } catch (err) {
+      showNotification(err.message, "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Carga inicial de datos desde la base de datos
@@ -56,6 +180,30 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     if (subView === 'list' && !selectedEditType) loadData();
   }, [activeAction, subView, selectedEditType]);
 
+  useEffect(() => {
+    if (activeAction === 'inspeccion_validacion') {
+      setLoading(true);
+      getBills().then(async (allBills) => {
+        // Filtramos las facturas: solo aquellas que tienen al menos un insumo con inspecciones en "Observacion"
+        const filtered = await Promise.all(allBills.map(async (bill) => {
+          const items = await getBillInputsByBillId(bill.id);
+          const hasObservations = await Promise.all(items.map(async (item) => {
+            const results = await getInspectionResults(item.type_inputs_id, item.id);
+            return results.some(r => r.status === 'Observacion');
+          }));
+          
+          if (hasObservations.some(obs => obs === true)) {
+            return bill;
+          }
+          return null;
+        }));
+        
+        setInvoices(filtered.filter(b => b !== null));
+      }).catch(console.error)
+      .finally(() => setLoading(false));
+    }
+  }, [activeAction]);
+
   // Limpiar estados cuando cambia la acción principal para forzar nueva búsqueda
   useEffect(() => {
     setSelectedEditType('');
@@ -63,6 +211,9 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     setSelectedInsumoId('');
     setSearchTerm('');
     setSubView('list');
+    setValidationView({ invoiceId: '', insumoIndex: '', currentStep: 1 });
+    setPendingDecisions({});
+    setInspectionHistory([]);
   }, [activeAction]);
 
   const handleChange = (e) => {
@@ -76,6 +227,46 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     }
 
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleValidationViewChange = async (e) => {
+    const { name, value } = e.target;
+    if (name === 'invoiceId') {
+      setLoading(true);
+      try {
+        const items = await getBillInputsByBillId(value);
+        
+        // Filtramos las referencias: solo mostrar las que tienen resultados en "Observacion"
+        const filteredItems = await Promise.all(items.map(async (item) => {
+          const results = await getInspectionResults(item.type_inputs_id, item.id);
+          const hasObs = results.some(r => r.status === 'Observacion');
+          return hasObs ? item : null;
+        }));
+
+        setSelectedInvoiceItems(filteredItems.filter(i => i !== null));
+        setValidationView({ invoiceId: value, insumoIndex: '', currentStep: 1 });
+        setInspectionHistory([]);
+        setPendingDecisions({});
+      } catch (err) { showNotification("Error al cargar insumos", "error"); }
+      finally { setLoading(false); }
+    } else if (name === 'insumoIndex') {
+      const ins = selectedInvoiceItems[value];
+      setLoading(true);
+      try {
+        const results = await getInspectionResults(ins.type_inputs_id, ins.id);
+        // FILTRO CRÍTICO: Solo cargar muestras cuyo status sea "Observacion"
+        const pending = results.filter(r => r.status === 'Observacion');
+        setInspectionHistory(pending);
+        setValidationView(prev => ({ 
+          ...prev, 
+          insumoIndex: value, 
+          currentStep: 1 
+        }));
+        setPendingDecisions({});
+        if (pending.length === 0) showNotification("No hay muestras en observación para esta referencia.", "info");
+      } catch (err) { showNotification("Error al cargar inspecciones", "error"); }
+      finally { setLoading(false); }
+    }
   };
 
   // Nueva función para buscar en tablas específicas
@@ -133,7 +324,11 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
 
       specs.forEach(key => {
         const value = editFormData[key];
-        cleanPayload[key] = parseFloat(value) || 0;
+        if (key === 'presentation') {
+          cleanPayload[key] = value || 'N/A';
+        } else {
+          cleanPayload[key] = parseFloat(value) || 0;
+        }
       });
 
       await updateInsumo(selectedInsumoId, cleanPayload);
@@ -150,25 +345,25 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     }
   };
 
-  // Mapeo de especificaciones técnicas por tipo
-  const getSpecsConfig = (tipo) => {
-    switch (tipo) {
-      case 'Stuffing': return ['internal_diameter', 'external_diameter', 'height'];
-      case 'Stamps': return ['internal_diameter', 'external_diameter', 'height_a', 'height_b'];
-      case 'Oring': return ['internal_diameter', 'height'];
-      case 'Chemicals': return [];
-      case 'Thermoplastics': return [];
-      case 'Bags': return ['height', 'width', 'art', 'caliber'];
-      case 'Cardboard': return ['height', 'width', 'caliber'];
-      case 'Cases': return ['caliber', 'armed'];
-      case 'Packings': return [
-        'thickness_a', 'thickness_b', 'thickness_c', 'thickness_d',
-        'ring_diameter_a', 'ring_diameter_b', 'ring_diameter_c', 'ring_diameter_d'
-      ];
-      case 'Collars': return ['internal_diameter', 'height'];
-      default: return [];
-    }
+  // Configuración de especificaciones por ID (Idéntica a Admin)
+  const getSpecsByTypeId = (typeId) => {
+    const specs = {
+      1: ['internal_diameter', 'external_diameter', 'height'],
+      2: ['internal_diameter', 'external_diameter', 'height_a', 'height_b'],
+      3: ['internal_diameter', 'height'],
+      4: ['presentation', 'batch_date', 'production_test'],
+      5: ['height', 'width', 'art', 'caliber'],
+      6: ['height', 'width', 'caliber'],
+      7: ['caliber', 'armed'],
+      8: ['visual'],
+      9: ['thickness_a', 'thickness_b', 'thickness_c', 'thickness_d', 'ring_diameter_a', 'ring_diameter_b', 'ring_diameter_c', 'ring_diameter_d'],
+      10: ['internal_diameter', 'height', 'joint'],
+    };
+    return specs[typeId] || [];
   };
+
+  // Mapeo inverso para mantener compatibilidad con el registro manual
+  const typeNameToId = { 'Stuffing': 1, 'Stamps': 2, 'Oring': 3, 'Chemicals': 4, 'Bags': 5, 'Cardboard': 6, 'Cases': 7, 'Thermoplastics': 8, 'Packings': 9, 'Collars': 10 };
 
   const getLabel = (key) => {
     const labels = {
@@ -177,11 +372,15 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
       height: 'Altura',
       height_a: 'Altura A',
       height_b: 'Altura B',
-      length: 'Largo',
       width: 'Ancho',
+      batch_date: 'Fecha de Lote',
+      presentation: 'Presentación',
+      production_test: 'Prueba de Producción',
+      visual: 'Inspección Visual',
       art: 'Arte',
       caliber: 'Calibre',
       armed: 'Armado',
+      joint: 'Unión',
       thickness_a: 'Espesor A', thickness_b: 'Espesor B', thickness_c: 'Espesor C', thickness_d: 'Espesor D',
       ring_diameter_a: 'Ø de Anillo A', ring_diameter_b: 'Ø de Anillo B', ring_diameter_c: 'Ø de Anillo C', ring_diameter_d: 'Ø de Anillo D'
     };
@@ -207,7 +406,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     setLoading(true);
     
     // 1. Construir payload estrictamente con lo que el backend espera
-    const specs = getSpecsConfig(formData.tipo);
+    const specs = getSpecsByTypeId(typeNameToId[formData.tipo]);
     const userId = parseInt(user?.id || user?.user_id, 10);
 
     const cleanPayload = {
@@ -218,7 +417,11 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
 
     specs.forEach(key => {
       const value = formData[key];
-      cleanPayload[key] = parseFloat(value) || 0;
+      if (key === 'presentation') {
+        cleanPayload[key] = value || 'N/A';
+      } else {
+        cleanPayload[key] = parseFloat(value) || 0;
+      }
     });
 
     try {
@@ -309,7 +512,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                     <thead style={{ backgroundColor: 'var(--surface-variant)' }}>
                       <tr>
                         <th style={{ minWidth: '180px' }}>REFERENCIA</th>
-                        {getSpecsConfig(formData.tipo).map(key => (
+                        {getSpecsByTypeId(typeNameToId[formData.tipo]).map(key => (
                           <th key={key}>{getLabel(key)}</th>
                         ))}
                       </tr>
@@ -319,7 +522,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                         <td>
                           <input type="text" name="reference" className="field-input" value={formData.reference} onChange={handleChange} placeholder="Ingrese código..." required />
                         </td>
-                        {getSpecsConfig(formData.tipo).map(key => (
+                        {getSpecsByTypeId(typeNameToId[formData.tipo]).map(key => (
                           <td key={key}>
                             <input 
                               type="text" 
@@ -412,8 +615,8 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                         </span>
                       </td>
                       <td style={{ fontSize: '0.85rem' }}>
-                        {getSpecsConfig(ins.tipo).length > 0 
-                          ? getSpecsConfig(ins.tipo)
+                        {getSpecsByTypeId(ins.type_inputs_id).length > 0 
+                          ? getSpecsByTypeId(ins.type_inputs_id)
                               .map(key => `${getLabel(key)}: ${ins[key] || '0'}`)
                               .join(' / ')
                           : (ins.presentation || 'No additional specifications')}
@@ -446,7 +649,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                     <thead style={{ backgroundColor: 'var(--surface-variant)' }}>
                       <tr>
                         <th style={{ minWidth: '180px' }}>REFERENCIA</th>
-                        {getSpecsConfig(editFormData.tipo).map(key => (
+                        {getSpecsByTypeId(editFormData.type_inputs_id).map(key => (
                           <th key={key}>{getLabel(key)}</th>
                         ))}
                       </tr>
@@ -456,7 +659,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                         <td>
                           <input type="text" name="reference" className="field-input" value={editFormData.reference || editFormData.referencia} onChange={handleEditChange} required />
                         </td>
-                        {getSpecsConfig(editFormData.tipo).map(key => (
+                        {getSpecsByTypeId(editFormData.type_inputs_id).map(key => (
                           <td key={key}>
                             <input 
                               type="text" 
@@ -493,7 +696,177 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
       {activeAction === 'inspeccion_validacion' && (
         <div className="form-container">
           <h2 className="form-title">Validación de Inspección</h2>
-          <p className="loading-text">Esta sección se está creando con el proposito de validar las inspeccones que quedaron en "Observación".</p>
+          <div className="form-grid" style={{ marginBottom: '2rem' }}>
+            <div className="form-field">
+              <label>Seleccionar Factura</label>
+              <select name="invoiceId" className="field-input" value={validationView.invoiceId} onChange={handleValidationViewChange}>
+                <option value="" disabled>Seleccione factura para validar...</option>
+                {invoices.map(inv => <option key={inv.id} value={inv.id}>{inv.bill_nro}</option>)}
+              </select>
+            </div>
+            <div className="form-field">
+              <label>Seleccionar Referencia con Alerta</label>
+              <select name="insumoIndex" className="field-input" value={validationView.insumoIndex} onChange={handleValidationViewChange} disabled={!validationView.invoiceId}>
+                <option value="" disabled>Seleccione ítem en observación...</option>
+                {selectedInvoiceItems.map((ins, idx) => (
+                  <option key={ins.id} value={idx}>{ins.reference}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {inspectionHistory.length > 0 && selectedInvoiceItems[validationView.insumoIndex] && (
+            <div className="table-container-card" style={{ marginTop: '2rem', borderLeft: '5px solid #fbbf24' }}>
+              <h3 className="form-subtitle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Muestra en Revisión Técnica</span>
+                <span className="role-badge" style={{ backgroundColor: '#fbbf24', color: 'black', fontWeight: '800' }}>PENDIENTE DE DICTAMEN</span>
+              </h3>
+              
+              <div className="form-grid">
+                <div className="form-field form-field-inline" style={{ gridColumn: 'span 2' }}>
+                  <div className="field-input-group">
+                    <span className="input-group-addon" style={{ background: '#fbbf24', color: 'black' }}>
+                      Muestra Pendiente {validationView.currentStep} de {inspectionHistory.length}
+                    </span>
+                  </div>
+                </div>
+
+                {getSpecsByTypeId(selectedInvoiceItems[validationView.insumoIndex].type_inputs_id).map(key => {
+                  const currentRecord = inspectionHistory[validationView.currentStep - 1];
+                  const savedValue = currentRecord?.[key];
+                  const allowedValue = selectedInvoiceItems[validationView.insumoIndex][key];
+                  const isBool = ['presentation', 'production_test', 'visual', 'joint'].includes(key);
+                  const isDate = key.includes('date');
+                  const typeId = selectedInvoiceItems[validationView.insumoIndex].type_inputs_id;
+                  const status = getMeasurementStatus(savedValue, allowedValue, key);
+                  
+                  // Lógica específica para Químicos (Tipo 4): 
+                  // No mostrar Fecha de Lote y Prueba de Producción si la Presentación fue aprobada originalmente
+                  if (selectedInvoiceItems[validationView.insumoIndex].type_inputs_id === 4) {
+                    if ((key === 'batch_date' || key === 'production_test') && currentRecord?.presentation !== false) {
+                      return null;
+                    }
+                  }
+
+                  return (
+                    <div className="form-field form-field-measurement" style={{ gridColumn: 'span 2' }} key={key}>
+                      <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
+                        {getLabel(key)} {!isBool && !isDate && '(mm)'}
+                      </label>
+                      <div className="measurement-input-group" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', width: '100%' }}>
+                        {!isBool && !isDate && (
+                          <span className="measurement-label" style={{ whiteSpace: 'nowrap', color: 'var(--secondary)', fontSize: '0.9rem', minWidth: '120px' }}>
+                            Permitido: {Number(allowedValue || 0).toFixed(2)}
+                          </span>
+                        )}
+                        
+                        {isBool ? (
+                          <div className="field-input" style={{ flex: '1', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', fontWeight: '500' }}>
+                            <span className="material-symbols-outlined" style={{ marginRight: '8px', color: savedValue ? '#10b981' : '#ef4444' }}>
+                              {savedValue ? 'check_circle' : 'cancel'}
+                            </span>
+                            {savedValue === true ? 'Aprobado' : (savedValue === false ? 'Rechazado' : 'N/A')}
+                          </div>
+                        ) : (
+                          <input 
+                            type="text" 
+                            className="field-input" 
+                            style={{ flex: '1', backgroundColor: '#f8fafc' }} 
+                            value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')} 
+                            readOnly 
+                          />
+                        )}
+                        <span style={{ color: status.color, fontWeight: 'bold', minWidth: '100px', textAlign: 'right', fontSize: '0.85rem' }}>
+                          {status.text}
+                        </span>
+                      </div>
+
+                      {/* Botones de dictamen focalizados por característica */}
+                      {status.text === 'Observación' && (
+                        typeId === 4 && isBool ? (
+                          <div className="boolean-toggle-group" style={{ display: 'flex', gap: '0.5rem', marginTop: '12px', justifyContent: 'flex-end', borderTop: '1px dashed #fbbf24', paddingTop: '8px', flex: '1' }}>
+                            <button 
+                              type="button" 
+                              className={`btn ${pendingDecisions[key]?.status === 'Aprobado' ? 'btn-primary' : 'btn-secondary'}`}
+                              disabled={loading}
+                              onClick={() => handleDecision('Aprobado', key, true)}
+                              style={{ padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', backgroundColor: pendingDecisions[key]?.status === 'Aprobado' ? '#10b981' : '', color: pendingDecisions[key]?.status === 'Aprobado' ? 'white' : '' }}
+                            >Aprobado</button>
+                            <button 
+                              type="button" 
+                              className={`btn ${pendingDecisions[key]?.status === 'Rechazado' ? 'btn-primary' : 'btn-secondary'}`}
+                              disabled={loading}
+                              onClick={() => handleDecision('Rechazado', key, false)}
+                              style={{ padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', backgroundColor: pendingDecisions[key]?.status === 'Rechazado' ? '#ef4444' : '', color: pendingDecisions[key]?.status === 'Rechazado' ? 'white' : '' }}
+                            >Rechazado</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '1rem', marginTop: '12px', justifyContent: 'flex-end', borderTop: '1px dashed #fbbf24', paddingTop: '8px' }}>
+                            <button 
+                              type="button" 
+                              className="btn" 
+                              disabled={loading}
+                              onClick={() => handleDecision('Aprobado', key)} 
+                              style={{ backgroundColor: pendingDecisions[key]?.status === 'Aprobado' ? '#059669' : '#10b981', color: 'white', padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', border: pendingDecisions[key]?.status === 'Aprobado' ? '2px solid white' : 'none' }}
+                            >
+                              {pendingDecisions[key]?.status === 'Aprobado' ? '✓ APROBADO' : 'APROBAR'}
+                            </button>
+                            <button 
+                              type="button" 
+                              className="btn" 
+                              disabled={loading}
+                              onClick={() => handleDecision('Rechazado', key)} 
+                              style={{ backgroundColor: pendingDecisions[key]?.status === 'Rechazado' ? '#b91c1c' : '#ef4444', color: 'white', padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', border: pendingDecisions[key]?.status === 'Rechazado' ? '2px solid white' : 'none' }}
+                            >
+                              {pendingDecisions[key]?.status === 'Rechazado' ? '✕ RECHAZADO' : 'RECHAZAR'}
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
+
+                <div style={{ gridColumn: 'span 2', marginTop: '1rem', padding: '1.5rem', backgroundColor: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                   <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <span className="material-symbols-outlined" style={{ color: '#d97706' }}>info</span>
+                    <p style={{ margin: 0, fontSize: '0.95rem', color: '#92400e', lineHeight: '1.5' }}>
+                      <strong>Motivo de Observación:</strong> {inspectionHistory[validationView.currentStep - 1]?.observation || 'La medida presenta una desviación fuera de los parámetros estándar pero dentro del rango de tolerancia de ingeniería.'}
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Solo mostrar navegación si hay más de una observación para esta referencia */}
+              {inspectionHistory.length > 1 && (
+                <div className="form-actions" style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'space-between', padding: '0 1rem 1rem' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => setValidationView(prev => ({ ...prev, currentStep: Math.max(prev.currentStep - 1, 1) }))} 
+                    disabled={validationView.currentStep === 1}
+                  >
+                    <span className="material-symbols-outlined">arrow_back</span> Muestra Anterior
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => setValidationView(prev => ({ ...prev, currentStep: Math.min(prev.currentStep + 1, inspectionHistory.length) }))} 
+                    disabled={validationView.currentStep === inspectionHistory.length}
+                  >
+                    Siguiente Observación <span className="material-symbols-outlined">arrow_forward</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {validationView.insumoIndex !== '' && inspectionHistory.length === 0 && !loading && (
+            <div className="welcome-card" style={{ marginTop: '2rem', textAlign: 'center', border: '2px dashed var(--outline-variant)' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '3rem', color: 'var(--secondary)', marginBottom: '1rem' }}>task_alt</span>
+              <p style={{ color: 'var(--secondary)', fontWeight: '600' }}>No se encontraron muestras en estado de "Observación" para esta referencia.</p>
+            </div>
+          )}
         </div>
       )}
 

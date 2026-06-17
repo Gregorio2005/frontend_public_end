@@ -355,6 +355,33 @@ export const getSuppliers = async () => {
 };
 
 /**
+ * Servicio para actualizar el nombre de un proveedor.
+ */
+export const updateSupplier = async (supplierId, name, userId) => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    const response = await fetch(`${API_URL}/suppliers/${supplierId}`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ name, user_id: userId })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al actualizar el proveedor');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error en updateSupplier service:", error);
+    throw error;
+  }
+};
+
+/**
  * Servicio para registrar un nuevo proveedor.
  */
 export const registerSupplier = async (supplierData) => {
@@ -443,6 +470,304 @@ export const deleteMasterInput = async (id) => {
     return await response.json();
   } catch (error) {
     console.error("Error en deleteMasterInput:", error);
+    throw error;
+  }
+};
+
+/**
+ * Registra una nueva factura y sus insumos asociados.
+ */
+export const registerBill = async (billData) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/bill-data`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(billData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al registrar la factura');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error en registerBill:", error);
+    throw error;
+  }
+};
+
+/**
+ * Obtiene la lista de facturas registradas (cabeceras).
+ */
+export const getBills = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/bill-data`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) throw new Error('Error al obtener las facturas');
+    const data = await response.json();
+    return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Error en getBills:", error);
+    throw error;
+  }
+};
+
+/**
+ * Obtiene los insumos asociados a una factura específica.
+ */
+export const getBillInputsByBillId = async (billId) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/bill-inputs?bill_data_id=${billId}`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) throw new Error('Error al obtener los detalles de la factura');
+    const data = await response.json();
+    const rawItems = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+
+    // 1. Filtrado de seguridad por ID de factura
+    const items = rawItems.filter(item => String(item.bill_data_id) === String(billId))
+      .map(item => ({ ...item, bill_inputs_id: item.id })); // Mapeo preventivo del ID correcto
+
+    // 2. ENRIQUECIMIENTO PROFUNDO: Obtenemos el catálogo maestro y los detalles técnicos específicos
+    // Esto soluciona el problema de los valores permitidos en 0.00
+    const masterRes = await fetch(`${API_URL}/master-inputs`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (masterRes.ok) {
+      const master = await masterRes.json();
+      const masterList = master.data || master;
+
+      const typeEndpoints = {
+        1: 'inputs-stuffing', 2: 'inputs-stamps', 3: 'inputs-oring', 4: 'inputs-chemicals',
+        5: 'inputs-bags', 6: 'inputs-cardboard', 7: 'inputs-cases', 8: 'inputs-thermoplastics',
+        9: 'inputs-cameras', 10: 'inputs-collars'
+      };
+
+      // Procesamos cada ítem en paralelo para traer sus medidas reales
+      const enrichedItems = await Promise.all(items.map(async (item) => {
+        const masterInfo = masterList.find(m => String(m.id) === String(item.master_inputs_id));
+        if (!masterInfo) return item;
+
+        // Verificamos que tengamos un endpoint y un ID técnico válido para evitar errores 500 en el backend
+        const endpoint = typeEndpoints[masterInfo.type_inputs_id];
+        if (!endpoint || !masterInfo.inputs_id) return { ...item, ...masterInfo, id: item.id };
+
+        const specRes = await fetch(`${API_URL}/${endpoint}/${masterInfo.inputs_id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        const specData = specRes.ok ? await specRes.json() : {};
+        const specs = specData.data || specData;
+
+        return { 
+          ...item, 
+          ...masterInfo, 
+          ...specs,
+          // Normalización para compatibilidad con la DB (Typos incluidos)
+          heigth: specs.heigth || specs.height || 0,
+          heigth_a: specs.heigth_a || specs.height_a || 0,
+          heigth_b: specs.heigth_b || specs.height_b || 0,
+          widht: specs.widht || specs.width || 0,
+          bathc_date: specs.bathc_date || specs.batch_date || '',
+          batch_date: specs.batch_date || specs.bathc_date || '',
+          bill_inputs_id: item.id, // ID explícito para la clave foránea de inspección
+          id: item.id 
+        };
+      }));
+
+      return enrichedItems;
+    }
+
+    return items;
+  } catch (error) {
+    console.error("Error en getBillInputsByBillId:", error);
+    throw error;
+  }
+};
+
+/**
+ * Obtiene los resultados de inspección para un insumo específico.
+ */
+export const getInspectionResults = async (typeId, billInputId) => {
+  const INSPECTION_ENDPOINTS = {
+    1: 'inspection-stuffing', 2: 'inspection-stamps', 3: 'inspection-oring',
+    4: 'inspection-chemicals', 5: 'inspection-bags', 6: 'inspection-cardboard',
+    7: 'inspection-cases', 8: 'inspection-thermoplastics', 9: 'inspection-cameras',
+    10: 'inspection-collars'
+  };
+
+  try {
+    const token = localStorage.getItem('token');
+    const endpoint = INSPECTION_ENDPOINTS[typeId];
+    if (!endpoint) return [];
+
+    const response = await fetch(`${API_URL}/${endpoint}?bill_inputs_id=${billInputId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Error en getInspectionResults:", error);
+    return [];
+  }
+};
+
+/**
+ * Actualiza el dictamen final (status y observación) de una inspección.
+ */
+export const updateInspection = async (typeId, inspectionId, updateData) => {
+  const INSPECTION_ENDPOINTS = {
+    1: 'inspection-stuffing', 2: 'inspection-stamps', 3: 'inspection-oring',
+    4: 'inspection-chemicals', 5: 'inspection-bags', 6: 'inspection-cardboard',
+    7: 'inspection-cases', 8: 'inspection-thermoplastics', 9: 'inspection-cameras',
+    10: 'inspection-collars'
+  };
+
+  try {
+    const token = localStorage.getItem('token');
+    const endpoint = INSPECTION_ENDPOINTS[typeId];
+    if (!endpoint) throw new Error(`No se encontró endpoint para el tipo ${typeId}`);
+
+    const response = await fetch(`${API_URL}/${endpoint}/${inspectionId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      // Si el backend envía un mensaje de validación, lo mostramos
+      throw new Error(errorData.message || `Error ${response.status}: No se pudo actualizar el dictamen.`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en updateInspection:", error);
+    throw error;
+  }
+};
+
+/**
+ * Registra los resultados de una inspección técnica en la tabla correspondiente según el tipo.
+ */
+export const registerInspection = async (typeId, inspectionData) => {
+  const INSPECTION_ENDPOINTS = {
+    1: 'inspection-stuffing', 2: 'inspection-stamps', 3: 'inspection-oring',
+    4: 'inspection-chemicals', 5: 'inspection-bags', 6: 'inspection-cardboard',
+    7: 'inspection-cases', 8: 'inspection-thermoplastics', 9: 'inspection-cameras',
+    10: 'inspection-collars'
+  };
+
+  try {
+    const token = localStorage.getItem('token');
+    const endpoint = INSPECTION_ENDPOINTS[typeId];
+    if (!endpoint) throw new Error(`No se encontró endpoint de inspección para el tipo ${typeId}`);
+
+    // Limpieza de datos: eliminamos campos que no pertenecen a las tablas de inspección
+    // para evitar errores 400 por parte del backend (Zod/Validación)
+    const { numero_recepcion, ...cleanData } = inspectionData;
+
+    const response = await fetch(`${API_URL}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(cleanData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al registrar la inspección');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error en registerInspection:", error);
+    throw error;
+  }
+};
+
+/**
+ * Registra un detalle de insumo vinculado a una factura específica.
+ */
+export const registerBillInput = async (inputData) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/bill-inputs`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(inputData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al registrar el insumo de la factura');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error en registerBillInput:", error);
+    throw error;
+  }
+};
+
+/**
+ * Actualiza el estado de una asignación en el maestro de insumos (Vigente/Desuso).
+ */
+export const updateMasterInputStatus = async (id, updateData) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/master-inputs/${id}`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al actualizar el estado del insumo');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error en updateMasterInputStatus:", error);
     throw error;
   }
 };
