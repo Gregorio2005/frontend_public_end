@@ -275,6 +275,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
       charts: 'Gráficos',
       insumos: 'Insumos',
       inspeccion_validacion: 'Validación de Inspección',
+      tipos_insumo: 'Tipos de Insumo',
       profile: 'Mi Perfil'
     };
     return titles[action] || action.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());

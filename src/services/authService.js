@@ -966,6 +966,92 @@ export const getTypeInputs = async () => {
 };
 
 /**
+ * Registra un nuevo tipo de insumo en la tabla 'type_inputs'.
+ */
+export const createTypeInput = async (name) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/type-inputs`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ name })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al registrar el tipo de insumo');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en createTypeInput:", error);
+    throw error;
+  }
+};
+
+/**
+ * Actualiza un tipo de insumo existente en la tabla 'type_inputs'.
+ */
+export const updateTypeInput = async (id, name) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/type-inputs/${id}`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ name })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al actualizar el tipo de insumo');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en updateTypeInput:", error);
+    throw error;
+  }
+};
+
+/**
+ * Elimina un tipo de insumo de la tabla 'type_inputs'.
+ */
+export const deleteTypeInput = async (id) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/type-inputs/${id}`, {
+      method: 'DELETE',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al eliminar el tipo de insumo');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en deleteTypeInput:", error);
+    throw error;
+  }
+};
+
+/**
  * Obtiene la lista de insumos de una tabla técnica específica.
  * Esto permite realizar búsquedas directas en el módulo seleccionado.
  */

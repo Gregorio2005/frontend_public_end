@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getInsumos, registerInsumo, updateInsumo, getInsumosByType, getBills, getBillInputsByBillId, getInspectionResults, updateInspection } from '../services/authService';
+import { getInsumos, registerInsumo, updateInsumo, getInsumosByType, getBills, getBillInputsByBillId, getInspectionResults, updateInspection, getTypeInputs, createTypeInput, updateTypeInput, deleteTypeInput } from '../services/authService';
+import ConfirmModal from '../components/ConfirmModal';
 
 const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
   const [formData, setFormData] = useState({
@@ -44,6 +45,13 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
 
   // Estado para controlar la sub-vista (Lista/Modificar vs Agregar)
   const [subView, setSubView] = useState('list');
+
+  // Estados para la gestión de tipos de insumo
+  const [typeInputsList, setTypeInputsList] = useState([]);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [editingTypeId, setEditingTypeId] = useState(null);
+  const [editedTypeName, setEditedTypeName] = useState('');
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
   // Estado para notificaciones personalizadas (Toast)
   const [notification, setNotification] = useState({ message: '', type: 'success', visible: false });
@@ -235,6 +243,91 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     setPendingDecisions({});
     setInspectionHistory([]);
   }, [activeAction]);
+
+  // Cargar tipos de insumo cuando se selecciona el tab de tipos
+  useEffect(() => {
+    if (activeAction === 'tipos_insumo') {
+      loadTypeInputs();
+    }
+  }, [activeAction]);
+
+  const loadTypeInputs = async () => {
+    try {
+      const data = await getTypeInputs();
+      setTypeInputsList(data);
+    } catch (error) {
+      showNotification(`Error al cargar tipos de insumo: ${error.message}`, 'error');
+    }
+  };
+
+  const handleCreateTypeInput = async (e) => {
+    e.preventDefault();
+    if (!newTypeName.trim()) {
+      showNotification('El nombre del tipo es requerido', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      await createTypeInput(newTypeName.trim());
+      showNotification('Tipo de insumo registrado exitosamente');
+      setNewTypeName('');
+      await loadTypeInputs();
+    } catch (error) {
+      showNotification(`Error: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditTypeClick = (type) => {
+    setEditingTypeId(type.id);
+    setEditedTypeName(type.name);
+  };
+
+  const handleCancelEditType = () => {
+    setEditingTypeId(null);
+    setEditedTypeName('');
+  };
+
+  const handleSaveEditType = async (id) => {
+    if (!editedTypeName.trim()) {
+      showNotification('El nombre del tipo es requerido', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      await updateTypeInput(id, editedTypeName.trim());
+      showNotification('Tipo de insumo actualizado exitosamente');
+      setEditingTypeId(null);
+      setEditedTypeName('');
+      await loadTypeInputs();
+    } catch (error) {
+      showNotification(`Error: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTypeClick = (type) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Eliminar Tipo de Insumo',
+      message: `¿Está seguro de eliminar el tipo "${type.name}"? Esta acción no se puede deshacer.`,
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          await deleteTypeInput(type.id);
+          showNotification('Tipo de insumo eliminado exitosamente');
+          await loadTypeInputs();
+        } catch (error) {
+          showNotification(`Error: ${error.message}`, 'error');
+        } finally {
+          setLoading(false);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
+  };
 
   const handleChange = (e) => {
     let { name, value } = e.target;
@@ -497,6 +590,12 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
             >
               Registrar Nuevo Insumo
             </button>
+            <button 
+              className={`btn ${subView === 'types' ? 'btn-primary' : 'btn-secondary'}`} 
+              onClick={() => setSubView('types')}
+            >
+              Agregar Tipo de Insumo
+            </button>
           </div>
 
           {subView === 'add' ? (
@@ -572,6 +671,85 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
               </div>
             )}
           </form>
+        </div>
+      ) : subView === 'types' ? (
+        <div className="form-container">
+          <h2 className="form-title">Gestionar Tipos de Insumo</h2>
+          
+          <form className="admin-form" onSubmit={handleCreateTypeInput} style={{ marginBottom: '2rem' }}>
+            <div className="form-grid">
+              <div className="form-field">
+                <label>Nombre del Tipo de Insumo</label>
+                <input 
+                  type="text" 
+                  className="field-input"
+                  value={newTypeName} 
+                  onChange={(e) => setNewTypeName(e.target.value)} 
+                  placeholder="Ingrese el nombre del tipo..." 
+                  required 
+                />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                <span className="material-symbols-outlined" style={{ marginRight: '8px', fontSize: '18px' }}>add</span>
+                {loading ? 'Guardando...' : 'Agregar Tipo'}
+              </button>
+            </div>
+          </form>
+
+          <div className="table-container-card">
+            <div className="table-scroll-wrapper">
+              <table className="industrial-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '85%' }}>Nombre del Tipo de Insumo</th>
+                    <th className="text-center" style={{ width: '15%' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {typeInputsList.length > 0 ? typeInputsList.map((type) => {
+                    const isEditing = editingTypeId === type.id;
+                    return (
+                      <tr key={type.id}>
+                        <td style={{ fontWeight: '600' }}>
+                          {isEditing ? (
+                            <input 
+                              type="text" 
+                              className="field-input" 
+                              value={editedTypeName} 
+                              onClick={(e) => e.stopPropagation()} 
+                              onChange={(e) => setEditedTypeName(e.target.value)} 
+                              autoFocus 
+                            />
+                          ) : (type.name)}
+                        </td>
+                        <td className="text-center">
+                          {isEditing ? (
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                              <button className="btn-icon-save" title="Guardar" onClick={() => handleSaveEditType(type.id)}>✅</button>
+                              <button className="btn-icon-cancel" title="Cancelar" onClick={handleCancelEditType}>❌</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                              <button className="btn-icon-edit" title="Editar" onClick={() => handleEditTypeClick(type)}>✏️</button>
+                              <button className="btn-icon-cancel" title="Eliminar" onClick={() => handleDeleteTypeClick(type)} style={{ fontSize: '1rem' }}>🗑️</button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  }) : (
+                    <tr>
+                      <td colSpan="2" className="text-center no-data" style={{ padding: '3rem' }}>
+                        No hay tipos de insumo registrados. Use el formulario superior para agregar uno nuevo.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="form-container">
@@ -925,6 +1103,17 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
           <p>Configuración de parámetros técnicos y control de procesos.</p>
         </section>
       )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        type="danger"
+      />
     </div>
   );
 };
