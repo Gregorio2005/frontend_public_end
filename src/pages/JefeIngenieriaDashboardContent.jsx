@@ -251,6 +251,13 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     }
   }, [activeAction]);
 
+  // Cargar tipos de insumo para los selectores de Insumos
+  useEffect(() => {
+    if (activeAction === 'insumos') {
+      loadTypeInputs();
+    }
+  }, [activeAction]);
+
   const loadTypeInputs = async () => {
     try {
       const data = await getTypeInputs();
@@ -607,16 +614,11 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                 <label>Tipo de Insumo</label>
                 <select name="tipo" value={formData.tipo} onChange={handleChange} required className="field-input">
                   <option value="" disabled>Seleccione un tipo...</option>
-                  <option value="Stuffing">Estoperas</option>
-                  <option value="Stamps">Sellos</option>
-                  <option value="Oring">O-Rings</option>
-                  <option value="Chemicals">Químicos</option>
-                  <option value="Bags">Bolsas</option>
-                  <option value="Cardboard">Cartón</option>
-                  <option value="Cases">Estuches</option>
-                  <option value="Thermoplastics">Termoplásticos</option>
-                  <option value="Packings">Empaquetaduras</option>
-                  <option value="Collars">Collares</option>
+                  {typeInputsList.map(type => (
+                    <option key={type.id} value={type.name}>
+                      {typeNamesSpanish[type.name] || type.name}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -764,16 +766,11 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                 className="field-input"
               >
                 <option value="">Seleccione un tipo...</option>
-                <option value="Stuffing">Estoperas</option>
-                <option value="Stamps">Sellos</option>
-                <option value="Oring">O-Rings</option>
-                <option value="Chemicals">Químicos</option>
-                <option value="Bags">Bolsas</option>
-                <option value="Cardboard">Cartón</option>
-                <option value="Cases">Estuches</option>
-                <option value="Thermoplastics">Termoplásticos</option>
-                <option value="Packings">Empaquetaduras</option>
-                <option value="Collars">Collares</option>
+                {typeInputsList.map(type => (
+                  <option key={type.id} value={type.name}>
+                    {typeNamesSpanish[type.name] || type.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

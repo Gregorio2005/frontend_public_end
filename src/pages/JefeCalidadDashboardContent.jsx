@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getSuppliers, registerSupplier, assignMasterInput, getInsumosByType, getInsumos, deleteMasterInput, getMasterInputsBySupplier, updateSupplier, updateMasterInputStatus } from '../services/authService';
+import { getSuppliers, registerSupplier, assignMasterInput, getInsumosByType, getInsumos, deleteMasterInput, getMasterInputsBySupplier, updateSupplier, updateMasterInputStatus, getTypeInputs } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
 
 const JefeCalidadDashboardContent = ({ activeAction, user }) => {
@@ -32,6 +32,9 @@ const JefeCalidadDashboardContent = ({ activeAction, user }) => {
 
   // Estado para notificaciones personalizadas (Toast)
   const [notification, setNotification] = useState({ message: '', type: 'success', visible: false });
+
+  // Estado para tipos de insumo cargados desde el backend
+  const [typeInputsList, setTypeInputsList] = useState([]);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type, visible: true });
@@ -112,6 +115,15 @@ const JefeCalidadDashboardContent = ({ activeAction, user }) => {
     };
     fetchSuppliers();
   }, [activeAction, subView]);
+
+  // Cargar tipos de insumo desde el backend
+  useEffect(() => {
+    if (activeAction === 'proveedores') {
+      getTypeInputs()
+        .then(data => setTypeInputsList(data))
+        .catch(error => console.error("Error al cargar tipos de insumo:", error));
+    }
+  }, [activeAction]);
 
   // Carga los master_inputs para el proveedor seleccionado
   useEffect(() => {
@@ -634,9 +646,9 @@ const JefeCalidadDashboardContent = ({ activeAction, user }) => {
                         required 
                       >
                         <option value="">Seleccione el tipo...</option>
-                        {Object.entries(typeNamesSpanish).map(([englishName, spanishName]) => (
-                          <option key={englishName} value={englishName}>
-                            {spanishName}
+                        {typeInputsList.map(type => (
+                          <option key={type.id} value={type.name}>
+                            {typeNamesSpanish[type.name] || type.name}
                           </option>
                         ))}
                       </select>
@@ -731,9 +743,9 @@ const JefeCalidadDashboardContent = ({ activeAction, user }) => {
                 <label>Tipo de Insumo</label>
                 <select name="insumo" className="field-input" value={chartFilters.insumo} onChange={handleChartFilterChange} required>
                   <option value="" disabled>Seleccione tipo...</option>
-                  {Object.entries(typeNamesSpanish).map(([englishName, spanishName]) => (
-                    <option key={englishName} value={englishName}>
-                      {spanishName}
+                  {typeInputsList.map(type => (
+                    <option key={type.id} value={type.name}>
+                      {typeNamesSpanish[type.name] || type.name}
                     </option>
                   ))}
                 </select>

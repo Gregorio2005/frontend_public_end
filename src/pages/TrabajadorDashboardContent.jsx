@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getSuppliers, getMasterInputsBySupplier, registerBill, registerBillInput, getBills, getBillInputsByBillId, registerInspection } from '../services/authService';
+import { getSuppliers, getMasterInputsBySupplier, registerBill, registerBillInput, getBills, getBillInputsByBillId, registerInspection, getTypeInputs } from '../services/authService';
 
 const TrabajadorDashboardContent = ({ activeAction, user }) => {
   const [formData, setFormData] = useState({
@@ -33,6 +33,9 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
   const [selectedInvoiceItems, setSelectedInvoiceItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Estado para tipos de insumo cargados desde el backend
+  const [typeInputsList, setTypeInputsList] = useState([]);
+
   // Estado para notificaciones personalizadas (Toast)
   const [notification, setNotification] = useState({ message: '', type: 'success', visible: false });
 
@@ -47,6 +50,28 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
     1: 'Estoperas', 2: 'Sellos', 3: 'O-Rings', 4: 'Químicos', 5: 'Bolsas',
     6: 'Cartón', 7: 'Estuches', 8: 'Termoplásticos', 9: 'Empaquetaduras', 10: 'Collares'
   };
+
+  // Mapeo de nombres en inglés a español para selectores dinámicos
+  const typeNamesSpanish = {
+    'Stuffing': 'Estoperas',
+    'Stamps': 'Sellos',
+    'Oring': 'O-Rings',
+    'Chemicals': 'Químicos',
+    'Bags': 'Bolsas',
+    'Cardboard': 'Cartón',
+    'Cases': 'Estuches',
+    'Thermoplastics': 'Termoplásticos',
+    'Packings': 'Empaquetaduras',
+    'Collars': 'Collares'
+  };
+
+  // Generar idToSpanishType dinámicamente desde typeInputsList cuando esté disponible
+  const dynamicIdToSpanishType = typeInputsList.length > 0
+    ? typeInputsList.reduce((acc, type) => {
+        acc[type.id] = typeNamesSpanish[type.name] || type.name;
+        return acc;
+      }, {})
+    : idToSpanishType;
 
   // Definición de campos que son de naturaleza booleana (Checkboxes)
   const isBooleanField = (key) => ['presentation', 'production_test', 'visual', 'joint'].includes(key);
@@ -114,6 +139,9 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
   useEffect(() => {
     if (activeAction === 'add_factura') {
       getSuppliers().then(setSuppliers).catch(console.error);
+      getTypeInputs()
+        .then(data => setTypeInputsList(data))
+        .catch(error => console.error("Error al cargar tipos de insumo:", error));
     }
     if (activeAction === 'inspection') {
       setLoading(true);
@@ -257,7 +285,7 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
         calculatedQty = Number(ins.quantity_inspection || 1);
       }
       // Obtenemos el tipo en español para la lógica de visualización
-      const tipoNombre = idToSpanishType[ins.type_inputs_id] || 'Desconocido';
+      const tipoNombre = dynamicIdToSpanishType[ins.type_inputs_id] || 'Desconocido';
 
       setInspectionData(prev => ({ 
         ...prev, 
@@ -546,7 +574,7 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
                             <select name="type_inputs_id" className="field-input" value={insumo.type_inputs_id} onChange={(e) => handleInsumoChange(index, e)} required disabled={!formData.proveedor_id}>
                               <option value="" disabled>Seleccione tipo...</option>
                               {availableTypesIds.map(typeId => (
-                                <option key={typeId} value={typeId}>{idToSpanishType[typeId]}</option>
+                                <option key={typeId} value={typeId}>{dynamicIdToSpanishType[typeId]}</option>
                               ))}
                             </select>
                           </td>
