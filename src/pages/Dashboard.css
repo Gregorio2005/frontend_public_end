@@ -289,8 +289,8 @@
 
 .stats-display {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
 }
 
 .progress-widget {
@@ -328,8 +328,10 @@
   transition: stroke-dashoffset 1s ease-in-out;
 }
 
-.progress.approval { stroke: var(--primary); }
-.progress.rejection { stroke: var(--secondary); }
+/* Paleta tipo semáforo para el widget "Tasa de inspección" */
+.progress.approval { stroke: #10b981; }    /* Aprobado - verde */
+.progress.conditional { stroke: #f5b400; } /* Observación - amarillo */
+.progress.rejection { stroke: #dc2626; }   /* Rechazado - rojo */
 
 .percentage {
   position: absolute;
@@ -357,7 +359,308 @@
 .inv-id { display: block; font-weight: 600; font-size: 0.875rem; }
 .inv-desc { font-size: 0.75rem; color: var(--secondary); }
 .inv-date { font-weight: 700; font-size: 0.875rem; }
-.inv-date.urgent { color: var(--primary); }
+.inv-date.urgent {
+  color: var(--primary);
+}
+
+/* Widget "Calendario de Facturas" - Tarjeta clickable */
+.invoice-calendar-clickable {
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.invoice-calendar-clickable:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+.invoice-calendar-clickable:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.invoice-calendar-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.6rem 1rem;
+  background-color: var(--surface-container-low);
+  border: 1px dashed var(--outline-variant);
+  border-radius: 6px;
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Modal del Calendario de Facturas */
+.modal-overlay .invoice-calendar-modal {
+  max-width: 1000px;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+
+/* Padding vertical extra para que el calendario no toque los bordes */
+.modal-overlay:has(.invoice-calendar-modal) {
+  padding: 2rem 1rem;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--outline-variant);
+  background-color: var(--surface-container-low);
+}
+
+.calendar-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+.calendar-month {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--on-surface);
+  text-transform: capitalize;
+}
+.calendar-year {
+  font-size: 0.75rem;
+  color: var(--secondary);
+  letter-spacing: 0.1em;
+}
+
+.calendar-nav-btn {
+  padding: 0.4rem 0.6rem;
+  min-width: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-today-btn {
+  margin: 0.75rem 1.5rem 0;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding: 0.75rem 1.5rem 0.25rem;
+  gap: 6px;
+}
+.calendar-weekday {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  padding: 0.25rem 1.5rem 1rem;
+}
+
+.calendar-cell {
+  background-color: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  min-height: 78px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.calendar-cell:hover {
+  border-color: var(--primary);
+}
+
+.calendar-cell-other {
+  background-color: var(--surface-container-low);
+  color: var(--secondary);
+  opacity: 0.55;
+}
+
+.calendar-cell-today {
+  border-color: var(--primary);
+  background-color: rgba(168, 0, 12, 0.04);
+}
+.calendar-cell-today .calendar-day-number {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.calendar-cell-has-invoice {
+  border-color: var(--primary);
+  background-color: rgba(168, 0, 12, 0.06);
+}
+.calendar-cell-has-invoice:hover {
+  background-color: rgba(168, 0, 12, 0.1);
+}
+
+.calendar-day-number {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+.calendar-invoice-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+.calendar-invoice-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background-color: var(--primary);
+  color: var(--on-primary);
+  font-size: 0.65rem;
+  font-weight: 800;
+  cursor: help;
+}
+.calendar-invoice-more {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* Leyenda del calendario */
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.5rem 1.5rem 1rem;
+  border-top: 1px solid var(--outline-variant);
+  background-color: var(--surface-container-low);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--secondary);
+}
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--outline-variant);
+  display: inline-block;
+}
+.legend-dot-today {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+.legend-dot-invoice {
+  background-color: rgba(168, 0, 12, 0.25);
+  border-color: var(--primary);
+}
+.legend-dot-other {
+  background-color: var(--surface-container-lowest);
+  opacity: 0.55;
+}
+
+/* Listado de facturas del mes visible */
+.calendar-invoice-list {
+  padding: 1rem 1.5rem 1.25rem;
+  border-top: 1px solid var(--outline-variant);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.calendar-list-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--secondary);
+}
+.calendar-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--secondary);
+  text-align: center;
+  padding: 0.75rem 0;
+}
+.calendar-invoice-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.calendar-invoice-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background-color: var(--surface-container-lowest);
+  transition: border-color 0.15s;
+}
+.calendar-invoice-item:hover {
+  border-color: var(--primary);
+}
+.calendar-invoice-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.calendar-invoice-id {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--on-surface);
+}
+.calendar-invoice-desc {
+  font-size: 0.75rem;
+  color: var(--secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calendar-invoice-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.calendar-invoice-date {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--secondary);
+  letter-spacing: 0.05em;
+}
+.calendar-invoice-amount {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--primary);
+}
 
 /* Manufactura */
 .production-flow {

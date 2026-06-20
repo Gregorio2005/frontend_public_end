@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { updateProfile, getProfile } from '../services/authService';
+import { updateProfile, getProfile, getBills, getSuppliers, getInspectionStats, getManufacturingFlow } from '../services/authService';
 import Logo from '../components/Logo';
 import ConfirmModal from '../components/ConfirmModal';
 import logoImg from '../assets/logo.jpeg';
@@ -46,6 +46,95 @@ const Dashboard = ({ user = {}, onLogout }) => {
     document.getElementsByTagName('head')[0].appendChild(link);
   }, []);
 
+  // Estado para el modal del Calendario de Facturas
+  const [isInvoiceCalendarOpen, setIsInvoiceCalendarOpen] = useState(false);
+  // Mes y año que se está visualizando actualmente en el calendario
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  // Lista de facturas cargadas desde el backend
+  const [invoices, setInvoices] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  // Estado para el modal de detalle de una fecha específica
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [isDateDetailOpen, setIsDateDetailOpen] = useState(false);
+  // Estadísticas de inspección (conteo por estado)
+  const [inspectionStats, setInspectionStats] = useState({ Aprobado: 0, Observacion: 0, Rechazado: 0, Incompleta: 0, 'Aprobado Observacion': 0, 'Rechazado Observacion': 0 });
+  const [manufacturingFlow, setManufacturingFlow] = useState([]);
+
+  // Helpers del calendario
+  const MONTH_NAMES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  const WEEK_DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+  const formatDateKey = (year, month, day) => {
+    const mm = String(month + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    return `${year}-${mm}-${dd}`;
+  };
+
+  const goToPreviousMonth = () => {
+    setCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const goToNextMonth = () => {
+    setCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const goToToday = () => {
+    setCalendarDate(new Date());
+  };
+
+  // Construye la matriz de días que se renderiza en la cuadrícula del calendario
+  const buildCalendarMatrix = () => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = domingo
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const matrix = [];
+    let week = [];
+
+    // Días del mes anterior que se muestran para completar la primera semana
+    for (let i = firstDayOfMonth - 1; i >= 0; i--) {
+      week.push({
+        day: daysInPrevMonth - i,
+        isCurrentMonth: false,
+        dateKey: formatDateKey(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1, daysInPrevMonth - i)
+      });
+    }
+
+    // Días del mes actual
+    for (let day = 1; day <= daysInMonth; day++) {
+      week.push({
+        day,
+        isCurrentMonth: true,
+        dateKey: formatDateKey(year, month, day)
+      });
+      if (week.length === 7) {
+        matrix.push(week);
+        week = [];
+      }
+    }
+
+    // Días del mes siguiente para completar la última semana
+    let nextDay = 1;
+    const nextMonth = month === 11 ? 0 : month + 1;
+    const nextYear = month === 11 ? year + 1 : year;
+    while (week.length < 7) {
+      week.push({
+        day: nextDay,
+        isCurrentMonth: false,
+        dateKey: formatDateKey(nextYear, nextMonth, nextDay)
+      });
+      nextDay++;
+    }
+    matrix.push(week);
+
+    return matrix;
+  };
+
   // Carga inicial del perfil completo desde la base de datos al montar el Dashboard
   useEffect(() => {
     const loadProfileData = async () => {
@@ -61,6 +150,55 @@ const Dashboard = ({ user = {}, onLogout }) => {
     };
     loadProfileData();
   }, []);
+
+  useEffect(() => {
+    const loadInvoiceData = async () => {
+      try {
+        const [billsData, suppliersData] = await Promise.all([getBills(), getSuppliers()]);
+        setSuppliers(suppliersData);
+        const supplierMap = {};
+        suppliersData.forEach(s => { supplierMap[s.id] = s.name; });
+        const backendInvoices = billsData
+          .filter(bill => bill.receipt_date)
+          .map(bill => ({
+            id: bill.bill_nro || `#${bill.id}`,
+            date: bill.receipt_date.split('T')[0],
+            description: bill.odoo || bill.nro_exp || 'Factura',
+            amount: bill.nro_reception || 'N/A',
+            supplier: supplierMap[bill.suppliers_id] || 'Proveedor'
+          }));
+        setInvoices(backendInvoices);
+      } catch (error) {
+        console.error("Error al cargar datos de facturas:", error);
+      }
+    };
+    loadInvoiceData();
+  }, []);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      const stats = await getInspectionStats();
+      setInspectionStats(stats);
+    };
+    loadStats();
+    const interval = setInterval(loadStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const loadManufacturingFlow = async () => {
+      const data = await getManufacturingFlow();
+      setManufacturingFlow(data);
+    };
+    loadManufacturingFlow();
+  }, []);
+
+  useEffect(() => {
+    if (activeAction === null && userRole === 'Administrador') {
+      getInspectionStats().then(setInspectionStats);
+      getManufacturingFlow().then(setManufacturingFlow);
+    }
+  }, [activeAction]);
 
   const toggleVisibility = (field) => {
     setShowPass(prev => ({ ...prev, [field]: !prev[field] }));
@@ -94,7 +232,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
       return;
     }
     try {
-      await updateProfile({ 
+      await updateProfile({
         currentPassword,
         password: newPassword
       });
@@ -104,10 +242,10 @@ const Dashboard = ({ user = {}, onLogout }) => {
         message: 'Tu contraseña ha sido actualizada con éxito en el sistema.',
         type: 'info'
       });
-      setPasswordForm({ 
-        currentPassword: '', 
-        newPassword: '', 
-        confirmPassword: '' 
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
       });
     } catch (err) {
       setStatusModal({
@@ -124,18 +262,36 @@ const Dashboard = ({ user = {}, onLogout }) => {
     setRefreshKey(prev => prev + 1);
   };
 
+  // Mapeo de identificadores de acción a títulos en español para la cabecera.
+  // Si el identificador no está en el mapa, se muestra una versión por defecto.
+  const getPanelTitle = (action) => {
+    const titles = {
+      users: 'Usuarios',
+      applicants: 'Postulantes',
+      view_inspections: 'Ver Inspecciones',
+      add_factura: 'Agregar Factura',
+      inspection: 'Inspección',
+      proveedores: 'Proveedores',
+      charts: 'Gráficos',
+      insumos: 'Insumos',
+      inspeccion_validacion: 'Validación de Inspección',
+      profile: 'Mi Perfil'
+    };
+    return titles[action] || action.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
+
   // NORMALIZACIÓN DEL ROL
-  // Esta función ayuda a identificar el rol sin importar si viene como ID, 
+  // Esta función ayuda a identificar el rol sin importar si viene como ID,
   // texto en mayúsculas, minúsculas o con tildes.
   const getNormalizedRole = () => {
     const roleSource = profileData?.role || user.role || user.roles_id || '';
     const roleInput = roleSource.toString().toLowerCase();
-    
+
     if (roleInput === '1' || roleInput.includes('admin')) return 'Administrador';
     if (roleInput === '2' || roleInput.includes('trabajador')) return 'Trabajador';
     if (roleInput === '3' || roleInput.includes('calidad')) return 'Jefe de Calidad';
     if (roleInput === '4' || roleInput.includes('ingenieria') || roleInput.includes('ingeniería')) return 'Jefe de Ingeniería';
-        
+
     return roleInput || 'Administrador'; // Fallback por si acaso
   };
 
@@ -155,7 +311,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
       return (
         <div className="form-container">
           <h2 className="form-title">Configuración de Seguridad y Perfil</h2>
-          
+
           <div className="welcome-card" style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '2rem', border: '1px solid var(--outline-variant)' }}>
             <div className="avatar-circle" style={{ width: '80px', height: '80px', border: '2px solid var(--primary)' }}>
               <img src={logoImg} alt="Profile" className="avatar-img" />
@@ -205,18 +361,18 @@ const Dashboard = ({ user = {}, onLogout }) => {
                 <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--secondary)', borderBottom: '1px solid var(--outline-variant)', paddingBottom: '0.5rem', textTransform: 'uppercase', fontWeight: '700' }}>
                   Actualizar Credenciales de Acceso
                 </h3>
-                
+
                 <div className="form-field" style={{ marginBottom: '1.5rem' }}>
                   <label>Contraseña Actual</label>
                   <div style={{ position: 'relative' }}>
-                    <input 
-                      type={showPass.current ? "text" : "password"} 
-                      name="currentPassword" 
-                      className="field-input" 
-                      value={passwordForm.currentPassword} 
-                      onChange={handlePasswordInputChange} 
-                      placeholder="Ingrese su clave actual" 
-                      required 
+                    <input
+                      type={showPass.current ? "text" : "password"}
+                      name="currentPassword"
+                      className="field-input"
+                      value={passwordForm.currentPassword}
+                      onChange={handlePasswordInputChange}
+                      placeholder="Ingrese su clave actual"
+                      required
                     />
                     <button type="button" onClick={() => toggleVisibility('current')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>
                       <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{showPass.current ? 'visibility_off' : 'visibility'}</span>
@@ -228,14 +384,14 @@ const Dashboard = ({ user = {}, onLogout }) => {
                   <div className="form-field">
                     <label>Nueva Contraseña</label>
                     <div style={{ position: 'relative' }}>
-                      <input 
-                        type={showPass.new ? "text" : "password"} 
-                        name="newPassword" 
-                        className="field-input" 
-                        value={passwordForm.newPassword} 
-                        onChange={handlePasswordInputChange} 
-                        placeholder="Mínimo 8 caracteres" 
-                        required 
+                      <input
+                        type={showPass.new ? "text" : "password"}
+                        name="newPassword"
+                        className="field-input"
+                        value={passwordForm.newPassword}
+                        onChange={handlePasswordInputChange}
+                        placeholder="Mínimo 8 caracteres"
+                        required
                       />
                       <button type="button" onClick={() => toggleVisibility('new')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>
                         <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{showPass.new ? 'visibility_off' : 'visibility'}</span>
@@ -245,14 +401,14 @@ const Dashboard = ({ user = {}, onLogout }) => {
                   <div className="form-field">
                     <label>Confirmar Nueva Contraseña</label>
                     <div style={{ position: 'relative' }}>
-                      <input 
-                        type={showPass.confirm ? "text" : "password"} 
-                        name="confirmPassword" 
-                        className="field-input" 
-                        value={passwordForm.confirmPassword} 
-                        onChange={handlePasswordInputChange} 
-                        placeholder="Repita su nueva clave" 
-                        required 
+                      <input
+                        type={showPass.confirm ? "text" : "password"}
+                        name="confirmPassword"
+                        className="field-input"
+                        value={passwordForm.confirmPassword}
+                        onChange={handlePasswordInputChange}
+                        placeholder="Repita su nueva clave"
+                        required
                       />
                       <button type="button" onClick={() => toggleVisibility('confirm')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>
                         <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{showPass.confirm ? 'visibility_off' : 'visibility'}</span>
@@ -260,7 +416,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="form-actions" style={{ marginTop: '2.5rem' }}>
                   <button type="submit" className="btn btn-primary">Actualizar contraseña</button>
                 </div>
@@ -311,34 +467,46 @@ const Dashboard = ({ user = {}, onLogout }) => {
             <div className="icon-box">
               <span className="material-symbols-outlined">verified_user</span>
             </div>
-            <h3>Estado de Verificación</h3>
+            <h3>Tasa de inspección</h3>
           </div>
           <div className="stats-display">
-            <div className="progress-widget">
-              <div className="circular-progress">
-                <svg viewBox="0 0 100 100">
-                  <circle className="bg" cx="50" cy="50" r="40"></circle>
-                  <circle className="progress approval" cx="50" cy="50" r="40" style={{ strokeDashoffset: '37.6' }}></circle>
-                </svg>
-                <span className="percentage">85%</span>
-              </div>
-              <span className="stat-label">Aprobación General</span>
-            </div>
-            <div className="progress-widget">
-              <div className="circular-progress">
-                <svg viewBox="0 0 100 100">
-                  <circle className="bg" cx="50" cy="50" r="40"></circle>
-                  <circle className="progress rejection" cx="50" cy="50" r="40" style={{ strokeDashoffset: '213.5' }}></circle>
-                </svg>
-                <span className="percentage">15%</span>
-              </div>
-              <span className="stat-label">Tasa de Rechazo</span>
-            </div>
+            {(() => {
+              const total = inspectionStats.Aprobado + inspectionStats.Observacion + inspectionStats.Rechazado + inspectionStats['Aprobado Observacion'] + inspectionStats['Rechazado Observacion'];
+              const circ = 251.2;
+              const obsTotal = inspectionStats.Observacion + inspectionStats['Aprobado Observacion'] + inspectionStats['Rechazado Observacion'];
+              const stats = [
+                { count: inspectionStats.Aprobado, label: 'Aprobado', cls: 'approval' },
+                { count: obsTotal, label: 'Observacion', cls: 'conditional' },
+                { count: inspectionStats.Rechazado, label: 'Rechazado', cls: 'rejection' }
+              ];
+              return stats.map(s => {
+                const pct = total > 0 ? Math.round((s.count / total) * 100) : 0;
+                const offset = circ * (1 - pct / 100);
+                return (
+                  <div className="progress-widget" key={s.label}>
+                    <div className="circular-progress">
+                      <svg viewBox="0 0 100 100">
+                        <circle className="bg" cx="50" cy="50" r="40"></circle>
+                        <circle className={`progress ${s.cls}`} cx="50" cy="50" r="40" style={{ strokeDashoffset: offset }}></circle>
+                      </svg>
+                      <span className="percentage">{pct}%</span>
+                    </div>
+                    <span className="stat-label">{s.label}</span>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </section>
 
         {/* Widget: Calendario de Facturas */}
-        <section className="bento-item invoice-calendar">
+        <section
+          className="bento-item invoice-calendar invoice-calendar-clickable"
+          onClick={() => setIsInvoiceCalendarOpen(true)}
+          tabIndex={0}
+          role="button"
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsInvoiceCalendarOpen(true); }}
+        >
           <div className="bento-header">
             <div className="icon-box">
               <span className="material-symbols-outlined">inventory_2</span>
@@ -346,20 +514,19 @@ const Dashboard = ({ user = {}, onLogout }) => {
             <h3>Próximas Facturas</h3>
           </div>
           <div className="invoice-list">
-            <div className="invoice-row">
-              <div className="invoice-info">
-                <span className="inv-id">#INV-2210</span>
-                <span className="inv-desc">Acero Inoxidable</span>
+            {invoices.slice(0, 2).map((inv, idx) => (
+              <div className="invoice-row" key={idx}>
+                <div className="invoice-info">
+                  <span className="inv-id">{inv.id}</span>
+                  <span className="inv-desc">{inv.description}</span>
+                </div>
+                <span className="inv-date">{inv.date ? new Date(inv.date + 'T12:00:00').toLocaleDateString('es-VE', { day: 'numeric', month: 'short' }) : ''}</span>
               </div>
-              <span className="inv-date urgent">Hoy</span>
-            </div>
-            <div className="invoice-row">
-              <div className="invoice-info">
-                <span className="inv-id">#INV-2214</span>
-                <span className="inv-desc">Comp. Hidráulicos</span>
-              </div>
-              <span className="inv-date">24 Oct</span>
-            </div>
+            ))}
+          </div>
+          <div className="invoice-calendar-cta">
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>calendar_month</span>
+            Ver Calendario de Facturas
           </div>
         </section>
 
@@ -375,26 +542,38 @@ const Dashboard = ({ user = {}, onLogout }) => {
             <div className="production-stats">
               <div className="stat-pill">
                 <span className="label">Activas</span>
-                <span className="value">08</span>
+                <span className="value">{String(manufacturingFlow.length).padStart(2, '0')}</span>
               </div>
               <div className="stat-pill">
-                <span className="label">En Cola</span>
-                <span className="value">14</span>
+                <span className="label">Insumos</span>
+                <span className="value">{String(manufacturingFlow.reduce((acc, b) => acc + b.items.length, 0)).padStart(2, '0')}</span>
               </div>
             </div>
           </div>
           <div className="production-grid">
             <div className="active-orders">
-              <h4 className="section-subtitle">En Proceso Crítico</h4>
-              <div className="progress-item">
-                <div className="progress-info">
-                  <span>Orden #SP-9822 - Lote A</span>
-                  <span>72%</span>
-                </div>
-                <div className="progress-bar-container">
-                  <div className="progress-bar" style={{ width: '72%' }}></div>
-                </div>
-              </div>
+              <h4 className="section-subtitle">Facturas del Mes Actual</h4>
+              {manufacturingFlow.length === 0 ? (
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', padding: '0.5rem 0' }}>No hay facturas registradas para este mes.</p>
+              ) : (
+                manufacturingFlow.map((bill) => {
+                  const INSPECTION_PCT = 0.08;
+                  const totalInspectionsNeeded = bill.items.reduce((acc, item) => acc + Math.max(1, Math.ceil(item.quantity * INSPECTION_PCT)), 0);
+                  const totalInspectionsDone = bill.items.reduce((acc, item) => acc + item.inspection_count, 0);
+                  const billPct = totalInspectionsNeeded > 0 ? Math.min(100, Math.round((totalInspectionsDone / totalInspectionsNeeded) * 100)) : 0;
+                  return (
+                    <div className="progress-item" key={bill.id}>
+                      <div className="progress-info">
+                        <span>{bill.bill_nro || `Factura #${bill.id}`} — {bill.supplier_name}</span>
+                        <span>{totalInspectionsDone}/{totalInspectionsNeeded} ({billPct}%)</span>
+                      </div>
+                      <div className="progress-bar-container">
+                        <div className="progress-bar" style={{ width: `${billPct}%` }}></div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </section>
@@ -405,7 +584,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
   return (
     <div className={`dashboard-root role-${userRole.toLowerCase().replace(/\s+/g, '-')} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {/* Modal de Estado para el Perfil */}
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={statusModal.isOpen}
         title={statusModal.title}
         message={statusModal.message}
@@ -424,7 +603,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
               Panel
             </button>
           )}
-          
+
           {/* Acciones por Rol movidas al Sidebar */}
           {userRole === 'Administrador' && (
             <>
@@ -495,17 +674,17 @@ const Dashboard = ({ user = {}, onLogout }) => {
       <main className="main-viewport">
         <header className="top-app-bar">
           <div className="header-left">
-            <span 
-              className="material-symbols-outlined menu-icon" 
+            <span
+              className="material-symbols-outlined menu-icon"
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             >
               {isSidebarCollapsed ? 'menu' : 'menu_open'}
             </span>
             <h2 className="page-title">
-              {activeAction ? activeAction.toUpperCase().replace('_', ' ') : 'Panel'}
+              {activeAction ? getPanelTitle(activeAction) : 'Panel'}
             </h2>
           </div>
-          
+
           <div className="header-right">
             <div className={`user-profile-trigger ${activeAction === 'profile' ? 'active-profile' : ''}`} onClick={() => handleActionClick('profile')}>
               <div className="user-info">
@@ -528,6 +707,134 @@ const Dashboard = ({ user = {}, onLogout }) => {
           <span className="footer-copy">© 2026 Sealing Products C.A. • Gestión de Activos Industriales</span>
         </footer>
       </main>
+
+      {/* Modal del Calendario de Facturas */}
+      {isInvoiceCalendarOpen && (
+        <div className="modal-overlay" onClick={() => setIsInvoiceCalendarOpen(false)}>
+          <div className="modal-container invoice-calendar-modal" onClick={(e) => e.stopPropagation()}>
+            {/* Encabezado del calendario */}
+            <div className="calendar-header">
+              <button className="btn btn-secondary calendar-nav-btn" onClick={goToPreviousMonth}>
+                <span className="material-symbols-outlined">chevron_left</span>
+              </button>
+              <div className="calendar-title">
+                <span className="calendar-month">{MONTH_NAMES[calendarDate.getMonth()]}</span>
+                <span className="calendar-year">{calendarDate.getFullYear()}</span>
+              </div>
+              <button className="btn btn-secondary calendar-nav-btn" onClick={goToNextMonth}>
+                <span className="material-symbols-outlined">chevron_right</span>
+              </button>
+            </div>
+
+            <button className="btn btn-secondary calendar-today-btn" onClick={goToToday}>
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>today</span>
+              Hoy
+            </button>
+
+            {/* Encabezados de días de la semana */}
+            <div className="calendar-weekdays">
+              {WEEK_DAY_NAMES.map(day => (
+                <div className="calendar-weekday" key={day}>{day}</div>
+              ))}
+            </div>
+
+            {/* Cuadrícula del calendario */}
+            <div className="calendar-grid">
+              {buildCalendarMatrix().map((week, wIdx) =>
+                week.map((cell, dIdx) => {
+                  const dayInvoices = invoices.filter(inv => inv.date === cell.dateKey);
+                  const hasInvoice = dayInvoices.length > 0;
+                  const cellClass = [
+                    'calendar-cell',
+                    !cell.isCurrentMonth ? 'calendar-cell-other' : '',
+                    cell.dateKey === formatDateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()) ? 'calendar-cell-today' : '',
+                    hasInvoice ? 'calendar-cell-has-invoice' : ''
+                  ].filter(Boolean).join(' ');
+
+                  return (
+                    <div
+                      className={cellClass}
+                      key={`${wIdx}-${dIdx}`}
+                      style={hasInvoice ? { cursor: 'pointer' } : undefined}
+                      onClick={hasInvoice ? () => { setSelectedDate({ dateKey: cell.dateKey, invoices: dayInvoices }); setIsDateDetailOpen(true); } : undefined}
+                    >
+                      <span className="calendar-day-number">{cell.day}</span>
+                      {hasInvoice && (
+                        <div className="calendar-invoice-dots">
+                          <span className="calendar-invoice-dot" title="Factura programada">
+                            {dayInvoices.length}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Leyenda */}
+            <div className="calendar-legend">
+              <div className="legend-item">
+                <span className="legend-dot legend-dot-today"></span>
+                Hoy
+              </div>
+              <div className="legend-item">
+                <span className="legend-dot legend-dot-invoice"></span>
+                Factura programada
+              </div>
+              <div className="legend-item">
+                <span className="legend-dot legend-dot-other"></span>
+                Día fuera de mes
+              </div>
+            </div>
+
+            {/* Botón de cerrar */}
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setIsInvoiceCalendarOpen(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalle de Facturas por Fecha */}
+      {isDateDetailOpen && selectedDate && (
+        <div className="modal-overlay" onClick={() => setIsDateDetailOpen(false)} style={{ zIndex: 3100 }}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--outline-variant)', backgroundColor: 'var(--surface-container-low)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '700', color: 'var(--on-surface)' }}>
+                  Facturas del {new Date(selectedDate.dateKey + 'T12:00:00').toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--secondary)' }}>
+                  {selectedDate.invoices.length} factura{selectedDate.invoices.length !== 1 ? 's' : ''} encontrada{selectedDate.invoices.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '28px' }}>receipt_long</span>
+            </div>
+
+            <div style={{ padding: '1rem 1.5rem', maxHeight: '400px', overflowY: 'auto' }}>
+              <ul className="calendar-invoice-items">
+                {selectedDate.invoices.map((inv, idx) => (
+                  <li className="calendar-invoice-item" key={idx}>
+                    <div className="calendar-invoice-info">
+                      <span className="calendar-invoice-id">{inv.id}</span>
+                      <span className="calendar-invoice-desc">{inv.description}</span>
+                    </div>
+                    <div className="calendar-invoice-meta">
+                      <span className="calendar-invoice-date">{inv.supplier}</span>
+                      <span className="calendar-invoice-amount">{inv.amount}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setIsDateDetailOpen(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -77,15 +77,15 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     return { text: 'Rechazado', color: '#ef4444' };
   };
 
-  // Lógica para enviar el dictamen de una característica específica (Varios PUTs por muestra)
-  const handleDecision = async (newStatus, specKey, boolValue = null) => {
+  // Lógica para recolectar la decisión de una característica (sin enviar aún)
+  const handleDecision = (newStatus, specKey, boolValue = null) => {
     const currentInsumo = selectedInvoiceItems[validationView.insumoIndex];
     const currentRecord = inspectionHistory[validationView.currentStep - 1];
     const typeId = currentInsumo.type_inputs_id;
     
     let finalObservation = "";
 
-    // Lógica especial para Químicos (Mismos mensajes que el Trabajador)
+    // Lógica especial para Químicos
     if (typeId === 4) {
       if (specKey === 'presentation' && boolValue === true) {
         finalObservation = "Lote aprovado";
@@ -105,27 +105,39 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
       }
     }
 
-    // Feedback visual local y recolección para estatus global
-    const updatedDecisions = {
-      ...pendingDecisions,
-      [specKey]: { status: newStatus, msg: finalObservation }
-    };
-    setPendingDecisions(updatedDecisions);
+    // Solo actualizar el estado local
+    setPendingDecisions(prev => ({
+      ...prev,
+      [specKey]: { status: newStatus, msg: finalObservation, boolValue }
+    }));
+  };
 
-    // Cálculo del estatus global: se mantiene en 'Observacion' hasta que todo esté decidido o haya un rechazo
-    const obsKeys = getSpecsByTypeId(currentInsumo.type_inputs_id)
-      .filter(k => getMeasurementStatus(currentRecord[k], currentInsumo[k], k).text === 'Observación');
-    
-    let finalStatus = 'Observacion';
-    if (Object.values(updatedDecisions).some(d => d.status === 'Rechazado')) {
-      finalStatus = 'Rechazado';
-    } else if (obsKeys.every(k => updatedDecisions[k]?.status === 'Aprobado')) {
-      finalStatus = 'Aprobado';
+  // Envío definitivo del dictamen con todas las decisiones recopiladas
+  const handleFinalSubmission = async () => {
+    const currentInsumo = selectedInvoiceItems[validationView.insumoIndex];
+    const currentRecord = inspectionHistory[validationView.currentStep - 1];
+    const typeId = currentInsumo.type_inputs_id;
+    const techKeys = getSpecsByTypeId(typeId);
+
+    if (Object.keys(pendingDecisions).length === 0) {
+      showNotification("Debe definir al menos una característica antes de enviar.", "error");
+      return;
     }
+
+    // Calcular estatus global
+    let finalStatus = 'Observacion';
+    if (Object.values(pendingDecisions).some(d => d.status === 'Rechazado')) {
+      finalStatus = 'Rechazado Observacion';
+    } else if (Object.values(pendingDecisions).every(d => d.status === 'Aprobado')) {
+      finalStatus = 'Aprobado Observacion';
+    }
+
+    // Construir observación concatenando todas las decisiones
+    const observations = Object.entries(pendingDecisions).map(([key, decision]) => decision.msg);
+    const finalObservation = observations.join(' | ');
 
     setLoading(true);
     try {
-      const techKeys = getSpecsByTypeId(currentInsumo.type_inputs_id);
       const payload = {
         bill_inputs_id: currentInsumo.bill_inputs_id,
         users_id: currentRecord.users_id,
@@ -138,27 +150,35 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
       techKeys.forEach(key => {
         const isBool = ['presentation', 'production_test', 'visual', 'joint'].includes(key);
         const isDate = key.includes('date');
+        const decision = pendingDecisions[key];
         
-        // Si es la característica que estamos dictaminando y es booleana, usamos el nuevo valor
-        if (key === specKey && isBool && boolValue !== null) {
-          payload[key] = boolValue;
+        if (decision && isBool && decision.boolValue !== null && decision.boolValue !== undefined) {
+          payload[key] = decision.boolValue;
+        } else if (isBool) {
+          payload[key] = currentRecord[key] === true || currentRecord[key] === false ? currentRecord[key] : false;
+        } else if (isDate) {
+          const raw = currentRecord[key];
+          if (raw && typeof raw === 'string') {
+            payload[key] = raw.includes('T') ? raw.split('T')[0] : raw;
+          } else {
+            payload[key] = null;
+          }
         } else {
-          payload[key] = (isBool || isDate) ? currentRecord[key] : (parseFloat(currentRecord[key]) || 0);
+          const numVal = parseFloat(currentRecord[key]);
+          payload[key] = isNaN(numVal) ? 0 : numVal;
         }
       });
 
       await updateInspection(currentInsumo.type_inputs_id, currentRecord.id, payload);
-      showNotification(`Dictamen de ${getLabel(specKey)} enviado correctamente.`, "success");
+      showNotification(`Dictamen final enviado correctamente.`, "success");
 
-      // Si el dictamen global ya no es 'Observacion', removemos la muestra automáticamente tras un momento
-      if (finalStatus !== 'Observacion') {
-        setTimeout(() => {
-          setPendingDecisions({});
-          const remaining = inspectionHistory.filter((_, i) => i !== validationView.currentStep - 1);
-          setInspectionHistory(remaining);
-          if (remaining.length === 0) setValidationView(prev => ({ ...prev, insumoIndex: '' }));
-        }, 1500);
-      }
+      // Remover la muestra tras un momento
+      setTimeout(() => {
+        setPendingDecisions({});
+        const remaining = inspectionHistory.filter((_, i) => i !== validationView.currentStep - 1);
+        setInspectionHistory(remaining);
+        if (remaining.length === 0) setValidationView(prev => ({ ...prev, insumoIndex: '' }));
+      }, 1500);
     } catch (err) {
       showNotification(err.message, "error");
     } finally {
@@ -741,9 +761,9 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                   const status = getMeasurementStatus(savedValue, allowedValue, key);
                   
                   // Lógica específica para Químicos (Tipo 4): 
-                  // No mostrar Fecha de Lote y Prueba de Producción si la Presentación fue aprobada originalmente
+                  // No mostrar Fecha de Lote si la Presentación fue aprobada
                   if (selectedInvoiceItems[validationView.insumoIndex].type_inputs_id === 4) {
-                    if ((key === 'batch_date' || key === 'production_test') && currentRecord?.presentation !== false) {
+                    if (key === 'batch_date' && currentRecord?.presentation !== false) {
                       return null;
                     }
                   }
@@ -761,68 +781,72 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                         )}
                         
                         {isBool ? (
-                          <div className="field-input" style={{ flex: '1', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', fontWeight: '500' }}>
-                            <span className="material-symbols-outlined" style={{ marginRight: '8px', color: savedValue ? '#10b981' : '#ef4444' }}>
-                              {savedValue ? 'check_circle' : 'cancel'}
-                            </span>
-                            {savedValue === true ? 'Aprobado' : (savedValue === false ? 'Rechazado' : 'N/A')}
-                          </div>
+                          typeId === 4 ? (
+                            <div className="boolean-toggle-group" style={{ display: 'flex', gap: '0.5rem', flex: '1' }}>
+                              <button 
+                                type="button" 
+                                className={`btn ${pendingDecisions[key]?.status === 'Aprobado' ? 'btn-primary' : 'btn-secondary'}`}
+                                disabled={loading}
+                                onClick={() => handleDecision('Aprobado', key, true)}
+                                style={{ padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', backgroundColor: pendingDecisions[key]?.status === 'Aprobado' ? '#10b981' : '', color: pendingDecisions[key]?.status === 'Aprobado' ? 'white' : '' }}
+                              >Aprobado</button>
+                              <button 
+                                type="button" 
+                                className={`btn ${pendingDecisions[key]?.status === 'Rechazado' ? 'btn-primary' : 'btn-secondary'}`}
+                                disabled={loading}
+                                onClick={() => handleDecision('Rechazado', key, false)}
+                                style={{ padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', backgroundColor: pendingDecisions[key]?.status === 'Rechazado' ? '#ef4444' : '', color: pendingDecisions[key]?.status === 'Rechazado' ? 'white' : '' }}
+                              >Rechazado</button>
+                            </div>
+                          ) : (
+                            <div className="field-input" style={{ flex: '1', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', fontWeight: '500' }}>
+                              <span className="material-symbols-outlined" style={{ marginRight: '8px', color: savedValue ? '#10b981' : '#ef4444' }}>
+                                {savedValue ? 'check_circle' : 'cancel'}
+                              </span>
+                              {savedValue === true ? 'Aprobado' : (savedValue === false ? 'Rechazado' : 'N/A')}
+                            </div>
+                          )
                         ) : (
-                          <input 
-                            type="text" 
-                            className="field-input" 
-                            style={{ flex: '1', backgroundColor: '#f8fafc' }} 
-                            value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')} 
-                            readOnly 
-                          />
+                          status.text === 'Observación' ? (
+                            <div style={{ display: 'flex', gap: '0.5rem', flex: '1' }}>
+                              <input 
+                                type="text" 
+                                className="field-input" 
+                                style={{ flex: '1', backgroundColor: '#f8fafc' }} 
+                                value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')} 
+                                readOnly 
+                              />
+                              <div className="boolean-toggle-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button 
+                                  type="button" 
+                                  className={`btn ${pendingDecisions[key]?.status === 'Aprobado' ? 'btn-primary' : 'btn-secondary'}`}
+                                  disabled={loading}
+                                  onClick={() => handleDecision('Aprobado', key)}
+                                  style={{ padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', backgroundColor: pendingDecisions[key]?.status === 'Aprobado' ? '#10b981' : '', color: pendingDecisions[key]?.status === 'Aprobado' ? 'white' : '' }}
+                                >Aprobado</button>
+                                <button 
+                                  type="button" 
+                                  className={`btn ${pendingDecisions[key]?.status === 'Rechazado' ? 'btn-primary' : 'btn-secondary'}`}
+                                  disabled={loading}
+                                  onClick={() => handleDecision('Rechazado', key)}
+                                  style={{ padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', backgroundColor: pendingDecisions[key]?.status === 'Rechazado' ? '#ef4444' : '', color: pendingDecisions[key]?.status === 'Rechazado' ? 'white' : '' }}
+                                >Rechazado</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <input 
+                              type="text" 
+                              className="field-input" 
+                              style={{ flex: '1', backgroundColor: '#f8fafc' }} 
+                              value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')} 
+                              readOnly 
+                            />
+                          )
                         )}
                         <span style={{ color: status.color, fontWeight: 'bold', minWidth: '100px', textAlign: 'right', fontSize: '0.85rem' }}>
                           {status.text}
                         </span>
                       </div>
-
-                      {/* Botones de dictamen focalizados por característica */}
-                      {status.text === 'Observación' && (
-                        typeId === 4 && isBool ? (
-                          <div className="boolean-toggle-group" style={{ display: 'flex', gap: '0.5rem', marginTop: '12px', justifyContent: 'flex-end', borderTop: '1px dashed #fbbf24', paddingTop: '8px', flex: '1' }}>
-                            <button 
-                              type="button" 
-                              className={`btn ${pendingDecisions[key]?.status === 'Aprobado' ? 'btn-primary' : 'btn-secondary'}`}
-                              disabled={loading}
-                              onClick={() => handleDecision('Aprobado', key, true)}
-                              style={{ padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', backgroundColor: pendingDecisions[key]?.status === 'Aprobado' ? '#10b981' : '', color: pendingDecisions[key]?.status === 'Aprobado' ? 'white' : '' }}
-                            >Aprobado</button>
-                            <button 
-                              type="button" 
-                              className={`btn ${pendingDecisions[key]?.status === 'Rechazado' ? 'btn-primary' : 'btn-secondary'}`}
-                              disabled={loading}
-                              onClick={() => handleDecision('Rechazado', key, false)}
-                              style={{ padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', backgroundColor: pendingDecisions[key]?.status === 'Rechazado' ? '#ef4444' : '', color: pendingDecisions[key]?.status === 'Rechazado' ? 'white' : '' }}
-                            >Rechazado</button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '1rem', marginTop: '12px', justifyContent: 'flex-end', borderTop: '1px dashed #fbbf24', paddingTop: '8px' }}>
-                            <button 
-                              type="button" 
-                              className="btn" 
-                              disabled={loading}
-                              onClick={() => handleDecision('Aprobado', key)} 
-                              style={{ backgroundColor: pendingDecisions[key]?.status === 'Aprobado' ? '#059669' : '#10b981', color: 'white', padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', border: pendingDecisions[key]?.status === 'Aprobado' ? '2px solid white' : 'none' }}
-                            >
-                              {pendingDecisions[key]?.status === 'Aprobado' ? '✓ APROBADO' : 'APROBAR'}
-                            </button>
-                            <button 
-                              type="button" 
-                              className="btn" 
-                              disabled={loading}
-                              onClick={() => handleDecision('Rechazado', key)} 
-                              style={{ backgroundColor: pendingDecisions[key]?.status === 'Rechazado' ? '#b91c1c' : '#ef4444', color: 'white', padding: '0.4rem 1.2rem', fontSize: '0.75rem', fontWeight: '800', borderRadius: '4px', border: pendingDecisions[key]?.status === 'Rechazado' ? '2px solid white' : 'none' }}
-                            >
-                              {pendingDecisions[key]?.status === 'Rechazado' ? '✕ RECHAZADO' : 'RECHAZAR'}
-                            </button>
-                          </div>
-                        )
-                      )}
                     </div>
                   );
                 })}
@@ -834,6 +858,31 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
                       <strong>Motivo de Observación:</strong> {inspectionHistory[validationView.currentStep - 1]?.observation || 'La medida presenta una desviación fuera de los parámetros estándar pero dentro del rango de tolerancia de ingeniería.'}
                     </p>
                   </div>
+                </div>
+
+                <div style={{ gridColumn: 'span 2', marginTop: '1rem', display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary"
+                    disabled={loading || Object.keys(pendingDecisions).length === 0}
+                    onClick={handleFinalSubmission}
+                    style={{ 
+                      padding: '0.7rem 2rem', 
+                      fontSize: '0.9rem', 
+                      fontWeight: '800', 
+                      borderRadius: '6px',
+                      backgroundColor: Object.keys(pendingDecisions).length > 0 ? '#10b981' : '#94a3b8',
+                      display: 'flex', alignItems: 'center', gap: '0.5rem'
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>send</span>
+                    Definición Final
+                  </button>
+                  {Object.keys(pendingDecisions).length > 0 && (
+                    <span style={{ display: 'flex', alignItems: 'center', fontSize: '0.8rem', color: 'var(--secondary)' }}>
+                      {Object.keys(pendingDecisions).length} campo(s) definido(s)
+                    </span>
+                  )}
                 </div>
 
               </div>

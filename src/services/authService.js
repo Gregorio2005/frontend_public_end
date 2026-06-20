@@ -639,6 +639,48 @@ export const getInspectionResults = async (typeId, billInputId) => {
 };
 
 /**
+ * Obtiene el conteo de inspecciones por estado (Aprobado, Observacion, Rechazado, Incompleta).
+ */
+export const getInspectionStats = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const response = await fetch(`${API_URL}/inspection-stats/status-counts`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) throw new Error('Error al obtener estadísticas de inspección');
+    const data = await response.json();
+    return data.data || { Aprobado: 0, Observacion: 0, Rechazado: 0, Incompleta: 0, 'Aprobado Observacion': 0, 'Rechazado Observacion': 0 };
+  } catch (error) {
+    console.error("Error en getInspectionStats:", error);
+    return { Aprobado: 0, Observacion: 0, Rechazado: 0, Incompleta: 0, 'Aprobado Observacion': 0, 'Rechazado Observacion': 0 };
+  }
+};
+
+/**
+ * Obtiene el flujo de manufactura del mes actual (facturas + insumos + conteo de inspecciones).
+ */
+export const getManufacturingFlow = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/manufacturing-flow/current-month`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data.data) ? data.data : [];
+  } catch (error) {
+    console.error("Error en getManufacturingFlow:", error);
+    return [];
+  }
+};
+
+/**
  * Actualiza el dictamen final (status y observación) de una inspección.
  */
 export const updateInspection = async (typeId, inspectionId, updateData) => {

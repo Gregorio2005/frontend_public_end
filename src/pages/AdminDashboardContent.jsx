@@ -930,8 +930,8 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', alignItems: 'center' }}>
                     <span style={{ fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase' }}>Dictamen de la Inspección:</span>
                     <span className="role-badge" style={{ 
-                      backgroundColor: inspectionHistory[inspectionView.currentStep - 1]?.status === 'Aprobado' ? '#10b981' : 
-                                     (inspectionHistory[inspectionView.currentStep - 1]?.status === 'Rechazado' ? '#ef4444' : '#fbbf24'),
+                      backgroundColor: (inspectionHistory[inspectionView.currentStep - 1]?.status === 'Aprobado' || inspectionHistory[inspectionView.currentStep - 1]?.status === 'Aprobado Observacion') ? '#10b981' : 
+                                     (inspectionHistory[inspectionView.currentStep - 1]?.status === 'Rechazado' || inspectionHistory[inspectionView.currentStep - 1]?.status === 'Rechazado Observacion') ? '#ef4444' : '#fbbf24',
                       color: 'white',
                       fontWeight: '800'
                     }}>

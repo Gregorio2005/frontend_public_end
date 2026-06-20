@@ -10,7 +10,7 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
     numero_recepcion: '',
     fecha_recepcion: '',
     proveedor_id: '',
-    insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1 }]
+    insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1, percentage: 1 }]
   });
 
   // Estado para la inspección
@@ -128,7 +128,7 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
     setFormData(prev => ({ 
       ...prev, 
       proveedor_id: supplierId,
-      insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1 }]
+      insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1, percentage: 1 }]
     }));
     
     if (supplierId) {
@@ -200,13 +200,21 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
     if (name === 'type_inputs_id') newInsumos[index].master_inputs_id = '';
 
     newInsumos[index] = { ...newInsumos[index], [name]: value };
+
+    // Auto-calcular quantity_inspection cuando cambia percentage o cantidad
+    if (name === 'percentage' || name === 'cantidad') {
+      const qty = parseFloat(name === 'cantidad' ? value : newInsumos[index].cantidad) || 0;
+      const pct = parseFloat(name === 'percentage' ? value : newInsumos[index].percentage) || 0;
+      newInsumos[index].quantity_inspection = Math.max(1, Math.ceil(qty * (pct / 100)));
+    }
+
     setFormData(prev => ({ ...prev, insumos: newInsumos }));
   };
 
   const addInsumo = () => {
     setFormData(prev => ({
       ...prev,
-      insumos: [...prev.insumos, { type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1 }]
+      insumos: [...prev.insumos, { type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1, percentage: 1 }]
     }));
   };
 
@@ -243,8 +251,11 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
     } else if (name === 'insumoIndex') {
       const ins = selectedInvoiceItems[value];
 
-      // Lógica de Cálculo: Valor fijo del 8% de la factura para inspección obligatoria.
-      const calculatedQty = ins ? Number(((ins.cantidad || ins.quantity || 0) * 0.08).toFixed(2)) : 0;
+      // Lógica de Cálculo: Usar quantity_inspection almacenado en el bill_input.
+      let calculatedQty = 0;
+      if (ins) {
+        calculatedQty = Number(ins.quantity_inspection || 1);
+      }
       // Obtenemos el tipo en español para la lógica de visualización
       const tipoNombre = idToSpanishType[ins.type_inputs_id] || 'Desconocido';
 
@@ -331,11 +342,17 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
 
       // 2. Registramos cada insumo asociado (bill_inputs)
       const inputPromises = formData.insumos.map(item => {
+        const qty = parseFloat(item.cantidad) || 0;
+        const pct = parseFloat(item.percentage) || 0;
+        const qtyInspection = Math.max(1, Math.ceil(qty * (pct / 100)));
+        
         const inputPayload = {
-          bill_data_id: billId, // Vinculamos al ID de la cabecera recién creada
+          bill_data_id: billId,
           master_inputs_id: parseInt(item.master_inputs_id, 10),
           oem_number: item.oem,
-          quantity: parseFloat(item.cantidad)
+          quantity: qty,
+          quantity_inspection: qtyInspection,
+          percentage: pct
         };
         return registerBillInput(inputPayload);
       });
@@ -347,7 +364,7 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
       setFormData({
         numero_factura: '', fecha_factura: '', odoo: '',
         numero_expediente: '', numero_recepcion: '', fecha_recepcion: '', proveedor_id: '',
-        insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1 }]
+        insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1, percentage: 1 }]
       });
     } catch (err) {
       showNotification(`Error al registrar la factura: ${err.message}`, "error");
@@ -506,10 +523,12 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
                 <table className="industrial-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '30%' }}>Tipo de Insumo</th>
-                      <th style={{ width: '40%' }}>Referencia (Código Interno)</th>
+                      <th style={{ width: '25%' }}>Tipo de Insumo</th>
+                      <th style={{ width: '30%' }}>Referencia (Código Interno)</th>
                       <th>Número OEM</th>
                       <th>Cantidad</th>
+                      <th>% Inspección</th>
+                      <th>Cant. Inspeccionar</th>
                       <th className="text-center">Acción</th>
                     </tr>
                   </thead>
@@ -544,6 +563,12 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
                           </td>
                           <td>
                             <input type="number" name="cantidad" className="field-input" value={insumo.cantidad} onChange={(e) => handleInsumoChange(index, e)} min="0.01" step="0.01" required />
+                          </td>
+                          <td>
+                            <input type="number" name="percentage" className="field-input" value={insumo.percentage} onChange={(e) => handleInsumoChange(index, e)} min="1" max="100" step="0.01" required />
+                          </td>
+                          <td>
+                            <input type="number" className="field-input" value={insumo.quantity_inspection || 1} readOnly style={{ backgroundColor: '#f1f5f9' }} />
                           </td>
                           <td className="text-center">
                             <button type="button" className="btn-icon-cancel" onClick={() => removeInsumo(index)} title="Eliminar fila" disabled={formData.insumos.length === 1}>🗑️</button>
