@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults } from '../services/authService'; 
+import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults, getPendingPhotos, approveProfilePhoto, rejectProfilePhoto } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
+import Avatar from '../components/Avatar';
  
 const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications }) => {
   // Estado inicial siguiendo el orden de la base de datos
@@ -204,7 +205,9 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   });
 
   // Estado interno para alternar entre la lista de usuarios y el registro
-  const [subView, setSubView] = useState('list'); // 'list' o 'add'
+  const [subView, setSubView] = useState('list'); // 'list', 'add' o 'photos'
+  const [pendingPhotos, setPendingPhotos] = useState([]);
+  const [previewImage, setPreviewImage] = useState(null);
 
   // Estado para tabs de Página Web (Comunicado web / Postulantes)
   const [websiteTab, setWebsiteTab] = useState('notices');
@@ -216,6 +219,15 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
     message: '',
     onConfirm: () => {}
   });
+
+  const refreshPendingPhotos = async () => {
+    try {
+      const data = await getPendingPhotos();
+      setPendingPhotos(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error al cargar fotos pendientes:", error);
+    }
+  };
 
   // Cargar usuarios cuando se entra a la sección de usuarios en modo lista
   useEffect(() => {
@@ -238,6 +250,11 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
         }
       };
       loadUsers();
+    }
+
+    // Cargar fotos pendientes de aprobación
+    if (activeAction === 'users' && subView === 'photos') {
+      refreshPendingPhotos();
     }
 
     // Cargar postulantes cuando se selecciona la acción correspondiente
@@ -508,6 +525,30 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   const handleViewCv = (applicantId) => {
     const url = getCvUrl(applicantId);
     window.open(url, '_blank');
+  };
+
+  // Aprobar foto de perfil
+  const handleApprovePhoto = async (userId) => {
+    try {
+      await approveProfilePhoto(userId);
+      await refreshPendingPhotos();
+      showNotification('Foto aprobada correctamente.');
+      refreshNotifications();
+    } catch (error) {
+      showNotification(`Error: ${error.message}`, 'error');
+    }
+  };
+
+  // Rechazar foto de perfil
+  const handleRejectPhoto = async (userId) => {
+    try {
+      await rejectProfilePhoto(userId);
+      await refreshPendingPhotos();
+      showNotification('Foto rechazada y eliminada.');
+      refreshNotifications();
+    } catch (error) {
+      showNotification(`Error: ${error.message}`, 'error');
+    }
   };
 
   // Badge de color para el status
@@ -801,6 +842,12 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
             >
               Agregar Usuario
             </button>
+            <button 
+              className={`btn ${subView === 'photos' ? 'btn-primary' : 'btn-secondary'}`} 
+              onClick={() => setSubView('photos')}
+            >
+              Fotos Pendientes {pendingPhotos.length > 0 && `(${pendingPhotos.length})`}
+            </button>
           </div>
 
           {subView === 'list' ? (
@@ -920,7 +967,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                 </div>
               )}
             </div>
-          ) : (
+          ) : subView === 'add' ? (
             <div className="form-container">
               <h2 className="form-title">Registrar Nuevo Usuario</h2>
               <form className="admin-form" onSubmit={handleSubmit}>
@@ -992,6 +1039,79 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                   </button>
                 </div>
               </form>
+            </div>
+          ) : null}
+          </div>
+      )}
+
+      {activeAction === 'users' && subView === 'photos' && (
+        <div className="form-container">
+          <h2 className="form-title">
+            <span className="material-symbols-outlined">photo_library</span>
+            Fotos de Perfil Pendientes de Aprobación
+          </h2>
+          {pendingPhotos.length === 0 ? (
+            <p className="loading-text">No hay fotos pendientes de aprobación.</p>
+          ) : (
+            <div className="table-container-card">
+              <table className="data-table" style={{ width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '80px' }}>Foto</th>
+                    <th style={{ textAlign: 'center' }}>Usuario</th>
+                    <th style={{ width: '200px' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingPhotos.map(photo => (
+                    <tr key={photo.id}>
+                      <td>
+                        <img 
+                          src={photo.url_perfil_photo} 
+                          alt={`Foto de ${photo.name}`}
+                          onClick={() => setPreviewImage(photo.url_perfil_photo)}
+                          style={{ width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)', cursor: 'pointer', transition: 'transform 0.2s' }}
+                          onMouseEnter={e => e.target.style.transform = 'scale(1.15)'}
+                          onMouseLeave={e => e.target.style.transform = 'scale(1)'}
+                        />
+                      </td>
+                      <td style={{ fontWeight: 500, textAlign: 'center' }}>{photo.name} {photo.lastname}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button 
+                            onClick={() => handleApprovePhoto(photo.id)}
+                            className="btn"
+                            style={{ backgroundColor: '#059669', color: 'white', padding: '6px 12px', fontSize: '0.8rem' }}
+                            title="Aprobar foto"
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>check</span> Aprobar
+                          </button>
+                          <button 
+                            onClick={() => handleRejectPhoto(photo.id)}
+                            className="btn"
+                            style={{ backgroundColor: '#dc2626', color: 'white', padding: '6px 12px', fontSize: '0.8rem' }}
+                            title="Rechazar foto"
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span> Rechazar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {previewImage && (
+            <div 
+              onClick={() => setPreviewImage(null)}
+              style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, cursor: 'pointer' }}
+            >
+              <img 
+                src={previewImage} 
+                alt="Vista ampliada"
+                style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+              />
             </div>
           )}
         </div>

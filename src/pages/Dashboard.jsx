@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { updateProfile, getProfile, getBills, getSuppliers, getInspectionStats, getManufacturingFlow } from '../services/authService';
+import { updateProfile, getProfile, getBills, getSuppliers, getInspectionStats, getManufacturingFlow, uploadProfilePhoto } from '../services/authService';
 import Logo from '../components/Logo';
 import ConfirmModal from '../components/ConfirmModal';
 import NotificationBell from '../components/NotificationBell';
+import Avatar from '../components/Avatar';
 import logoImg from '../assets/logo.jpeg';
 import './Dashboard.css';
 
@@ -43,6 +44,8 @@ const Dashboard = ({ user = {}, onLogout }) => {
     new: false,
     confirm: false
   });
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     document.title = 'Sealing Products C.A.';
@@ -210,6 +213,26 @@ const Dashboard = ({ user = {}, onLogout }) => {
     setShowPass(prev => ({ ...prev, [field]: !prev[field] }));
   };
 
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const result = await uploadProfilePhoto(file);
+      setProfileData(prev => ({
+        ...prev,
+        url_perfil_photo: result.data.url_perfil_photo,
+        photo_approved: result.data.photo_approved
+      }));
+      setStatusModal({ isOpen: true, title: 'Foto subida', message: result.message, type: 'info' });
+    } catch (error) {
+      setStatusModal({ isOpen: true, title: 'Error', message: error.message, type: 'error' });
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handlePasswordInputChange = (e) => {
     const { name, value } = e.target;
     setPasswordForm(prev => ({ ...prev, [name]: value }));
@@ -320,15 +343,40 @@ const Dashboard = ({ user = {}, onLogout }) => {
           <h2 className="form-title">Configuración de Seguridad y Perfil</h2>
 
           <div className="welcome-card" style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '2rem', border: '1px solid var(--outline-variant)' }}>
-            <div className="avatar-circle" style={{ width: '80px', height: '80px', border: '2px solid var(--primary)' }}>
-              <img src={logoImg} alt="Profile" className="avatar-img" />
-            </div>
-            <div>
+            <Avatar
+              name={profileData?.name || user.name}
+              lastname={profileData?.lastname || user.lastname}
+              url={profileData?.url_perfil_photo}
+              approved={profileData?.photo_approved}
+              size={80}
+              style={{ border: '2px solid var(--primary)' }}
+            />
+            <div style={{ flex: 1 }}>
               <h3 style={{ margin: 0, color: 'var(--primary)', fontSize: '1.5rem' }}>
                 {profileData?.name || user.name} {profileData?.lastname || user.lastname || ''}
               </h3>
               <p style={{ margin: '5px 0', color: 'var(--secondary)', fontWeight: '700', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>{profileData?.role || userRole}</p>
               <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--on-surface)' }}>{profileData?.email || user.email || 'usuario@sealingproducts.com'}</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handlePhotoUpload}
+                style={{ display: 'none' }}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingPhoto}
+                style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+              >
+                {uploadingPhoto ? 'Subiendo...' : 'Cambiar foto'}
+              </button>
+              {profileData?.url_perfil_photo && !profileData?.photo_approved && (
+                <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: '600' }}>Pendiente de aprobación</span>
+              )}
             </div>
           </div>
 
@@ -700,7 +748,13 @@ const Dashboard = ({ user = {}, onLogout }) => {
                 <p className="user-role-label">{userRole}</p>
               </div>
               <div className="avatar-circle">
-                <img src={logoImg} alt="Profile" className="avatar-img" />
+                <Avatar
+                  name={profileData?.name || user.name}
+                  lastname={profileData?.lastname || user.lastname}
+                  url={profileData?.url_perfil_photo}
+                  approved={profileData?.photo_approved}
+                  size={40}
+                />
               </div>
             </div>
             <img src={logoImg} alt="Logo Corporativo" className="header-logo" />

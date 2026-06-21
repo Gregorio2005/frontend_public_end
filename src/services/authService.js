@@ -1376,3 +1376,53 @@ export const markAllNotificationsAsRead = async () => {
   if (!response.ok) throw new Error('Error al marcar notificaciones');
   return await response.json();
 };
+
+// =============================================
+// Servicios de Foto de Perfil
+// =============================================
+
+export const uploadProfilePhoto = async (file) => {
+  const token = localStorage.getItem('token');
+  const formData = new FormData();
+  formData.append('photo', file);
+  const response = await fetch(`${API_URL}/profile-photo/photo`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Error al subir la foto');
+  }
+  return await response.json();
+};
+
+export const getPendingPhotos = async () => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/profile-photo/pending`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Error al obtener fotos pendientes');
+  const res = await response.json();
+  return res.data;
+};
+
+export const approveProfilePhoto = async (userId) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/profile-photo/${userId}/approve`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Error al aprobar foto');
+  return await response.json();
+};
+
+export const rejectProfilePhoto = async (userId) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/profile-photo/${userId}/reject`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Error al rechazar foto');
+  return await response.json();
+};
