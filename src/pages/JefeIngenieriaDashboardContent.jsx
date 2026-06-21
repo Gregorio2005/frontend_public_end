@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInsumos, registerInsumo, updateInsumo, getInsumosByType, getBills, getBillInputsByBillId, getInspectionResults, updateInspection, getTypeInputs, createTypeInput, updateTypeInput, deleteTypeInput } from '../services/authService';
+import { getInsumos, registerInsumo, updateInsumo, getInsumosByType, getBills, getBillInputsByBillId, getInspectionResults, updateInspection, getTypeInputs, createTypeInput, updateTypeInput, deleteTypeInput, setTypesList } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
 
 const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotifications }) => {
@@ -262,6 +262,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
     try {
       const data = await getTypeInputs();
       setTypeInputsList(data);
+      setTypesList(data);
     } catch (error) {
       showNotification(`Error al cargar tipos de insumo: ${error.message}`, 'error');
     }
@@ -434,12 +435,15 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
     setLoading(true);
     try {
       // Construir payload limpio para actualización
-      const specs = getSpecsConfig(editFormData.tipo);
+      const selectedType = typeInputsList.find(t => String(t.id) === String(editFormData.tipo) || t.name === editFormData.tipo);
+      const typeName = selectedType ? selectedType.name : editFormData.tipo;
+      const typeId = selectedType ? selectedType.id : null;
+      const specs = typeId ? getSpecsByTypeId(typeId) : getSpecsByTypeId(editFormData.type_inputs_id);
       const userId = parseInt(user?.id || user?.user_id, 10);
       
       const cleanPayload = {
         reference: editFormData.reference || editFormData.referencia,
-        tipo: editFormData.tipo, // Se envía para que el service elija la ruta
+        tipo: typeName, // Nombre del tipo para que el service individual lo resuelva
         user_id: isNaN(userId) ? null : userId
       };
 
@@ -483,14 +487,33 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
     return specs[typeId] || [];
   };
 
+  // Especificaciones para el formulario de REGISTRO (excluye datos experimentales)
+  // Químicos (4) y Termoplásticos (8): solo referencia
+  // Collares (10): sin 'joint' (dato experimental)
+  const getRegisterSpecsByTypeId = (typeId) => {
+    const registerSpecs = {
+      1: ['internal_diameter', 'external_diameter', 'height'],
+      2: ['internal_diameter', 'external_diameter', 'height_a', 'height_b'],
+      3: ['internal_diameter', 'height'],
+      4: [],
+      5: ['height', 'width', 'art', 'caliber'],
+      6: ['height', 'width', 'caliber'],
+      7: ['caliber', 'armed'],
+      8: [],
+      9: ['thickness_a', 'thickness_b', 'thickness_c', 'thickness_d', 'ring_diameter_a', 'ring_diameter_b', 'ring_diameter_c', 'ring_diameter_d'],
+      10: ['internal_diameter', 'height'],
+    };
+    return registerSpecs[typeId] || [];
+  };
+
   // Mapeo inverso para mantener compatibilidad con el registro manual
   const typeNameToId = { 'Stuffing': 1, 'Stamps': 2, 'Oring': 3, 'Chemicals': 4, 'Bags': 5, 'Cardboard': 6, 'Cases': 7, 'Thermoplastics': 8, 'Packings': 9, 'Collars': 10 };
 
-  const getLabel = (key) => {
+  const getLabel = (key, typeId) => {
     const labels = {
       internal_diameter: 'Diámetro Interno Ø',
       external_diameter: 'Diámetro Externo Ø',
-      height: 'Altura',
+      height: (typeId === 5 || typeId === 6) ? 'Largo' : 'Altura',
       height_a: 'Altura A',
       height_b: 'Altura B',
       width: 'Ancho',
@@ -527,12 +550,14 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
     setLoading(true);
     
     // 1. Construir payload estrictamente con lo que el backend espera
-    const specs = getSpecsByTypeId(typeNameToId[formData.tipo]);
+    const selectedType = typeInputsList.find(t => String(t.id) === String(formData.tipo));
+    const typeName = selectedType ? selectedType.name : formData.tipo;
+    const specs = getSpecsByTypeId(parseInt(formData.tipo, 10));
     const userId = parseInt(user?.id || user?.user_id, 10);
 
     const cleanPayload = {
       reference: formData.reference,
-      tipo: formData.tipo, // El service lo usará para rutear
+      tipo: typeName, // Nombre del tipo para que el service individual lo resuelva
       user_id: isNaN(userId) ? null : userId
     };
 
@@ -617,7 +642,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                 <select name="tipo" value={formData.tipo} onChange={handleChange} required className="field-input">
                   <option value="" disabled>Seleccione un tipo...</option>
                   {typeInputsList.map(type => (
-                    <option key={type.id} value={type.name}>
+                    <option key={type.id} value={type.id}>
                       {typeNamesSpanish[type.name] || type.name}
                     </option>
                   ))}
@@ -635,8 +660,8 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                     <thead style={{ backgroundColor: 'var(--surface-variant)' }}>
                       <tr>
                         <th style={{ minWidth: '180px' }}>REFERENCIA</th>
-                        {getSpecsByTypeId(typeNameToId[formData.tipo]).map(key => (
-                          <th key={key}>{getLabel(key)}</th>
+                        {getRegisterSpecsByTypeId(parseInt(formData.tipo, 10)).map(key => (
+                          <th key={key}>{getLabel(key, parseInt(formData.tipo, 10))}</th>
                         ))}
                       </tr>
                     </thead>
@@ -645,7 +670,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                         <td>
                           <input type="text" name="reference" className="field-input" value={formData.reference} onChange={handleChange} placeholder="Ingrese código..." required />
                         </td>
-                        {getSpecsByTypeId(typeNameToId[formData.tipo]).map(key => (
+                        {getRegisterSpecsByTypeId(parseInt(formData.tipo, 10)).map(key => (
                           <td key={key}>
                             <input 
                               type="text" 
@@ -769,7 +794,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
               >
                 <option value="">Seleccione un tipo...</option>
                 {typeInputsList.map(type => (
-                  <option key={type.id} value={type.name}>
+                  <option key={type.id} value={type.id}>
                     {typeNamesSpanish[type.name] || type.name}
                   </option>
                 ))}
@@ -792,39 +817,49 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                 />
               </div>
             </div>
-            <div className="table-scroll-wrapper">
-              <table className="industrial-table">
-                <thead>
-                  <tr>
-                    <th>Referencia</th>
-                    <th>Tipo</th>
-                    <th>Especificaciones Técnicas</th>
-                    <th className="text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInsumos.map(ins => (
-                    <tr key={ins.id} className={selectedInsumoId === ins.id.toString() ? 'row-selected' : ''}>
-                      <td style={{ fontWeight: '600', color: 'var(--primary)' }}>{ins.reference || ins.referencia}</td>
-                      <td>
-                        <span className={`role-badge badge-${ins.tipo?.toLowerCase() || 'default'}`}>
-                          {typeNamesSpanish[ins.tipo] || ins.tipo}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: '0.85rem' }}>
-                        {getSpecsByTypeId(ins.type_inputs_id).length > 0 
-                          ? getSpecsByTypeId(ins.type_inputs_id)
-                              .map(key => `${getLabel(key)}: ${ins[key] || '0'}`)
-                              .join(' / ')
-                          : (ins.presentation || 'No additional specifications')}
-                      </td>
-                      <td className="text-center">
-                        <button className="btn-icon-edit" title="Editar" onClick={() => handleEditClick(ins)}>✏️</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="table-scroll-wrapper" style={{ overflowX: 'auto' }}>
+              {(() => {
+                const selectedTypeId = typeInputsList.find(t => String(t.id) === String(selectedEditType))?.id;
+                const visibleSpecs = getSpecsByTypeId(selectedTypeId).filter(key => !['presentation', 'batch_date', 'production_test', 'visual', 'joint'].includes(key));
+                return (
+                  <table className="industrial-table">
+                    <thead>
+                      <tr>
+                        <th>Referencia</th>
+                        <th>Tipo</th>
+                        {visibleSpecs.map(key => (
+                          <th key={key}>{getLabel(key, selectedTypeId)}</th>
+                        ))}
+                        <th className="text-center">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredInsumos.map(ins => (
+                        <tr key={ins.id} className={selectedInsumoId === ins.id.toString() ? 'row-selected' : ''}>
+                          <td style={{ fontWeight: '600', color: 'var(--primary)' }}>{ins.reference || ins.referencia}</td>
+                          <td>
+                            <span className={`role-badge badge-${ins.tipo?.toLowerCase() || 'default'}`}>
+                              {typeNamesSpanish[ins.tipo] || ins.tipo}
+                            </span>
+                          </td>
+                          {visibleSpecs.map(key => {
+                            const val = ins[key];
+                            const isEmpty = val === undefined || val === null || val === '' || val === 0 || val === '0';
+                            return (
+                              <td key={key} style={{ fontSize: '0.85rem', color: isEmpty ? 'var(--secondary)' : 'inherit', textAlign: 'center' }}>
+                                {isEmpty ? '-' : val}
+                              </td>
+                            );
+                          })}
+                          <td className="text-center">
+                            <button className="btn-icon-edit" title="Editar" onClick={() => handleEditClick(ins)}>✏️</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
           </div>
 
@@ -847,7 +882,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                       <tr>
                         <th style={{ minWidth: '180px' }}>REFERENCIA</th>
                         {getSpecsByTypeId(editFormData.type_inputs_id).map(key => (
-                          <th key={key}>{getLabel(key)}</th>
+                          <th key={key}>{getLabel(key, editFormData.type_inputs_id)}</th>
                         ))}
                       </tr>
                     </thead>
@@ -948,7 +983,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                   return (
                     <div className="form-field form-field-measurement" style={{ gridColumn: 'span 2' }} key={key}>
                       <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
-                        {getLabel(key)} {!isBool && !isDate && '(mm)'}
+                        {getLabel(key, selectedInvoiceItems[validationView.insumoIndex].type_inputs_id)} {!isBool && !isDate && '(mm)'}
                       </label>
                       <div className="measurement-input-group" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', width: '100%' }}>
                         {!isBool && !isDate && (

@@ -956,6 +956,7 @@ export const hireApplicant = async (applicantId) => {
 
 /**
  * Mapeo interno para dirigir las peticiones a los módulos específicos del backend.
+ * Se usa como fallback si typeInputsList no está disponible.
  */
 const INPUT_ENDPOINTS = {
   'Stuffing': 'inputs-stuffing',
@@ -968,6 +969,29 @@ const INPUT_ENDPOINTS = {
   'Thermoplastics': 'inputs-thermoplastics',
   'Packings': 'inputs-cameras',
   'Collars': 'inputs-collars'
+};
+
+/**
+ * Caché local de la lista de tipos de insumo (cargada desde type_inputs).
+ * Se usa para resolver endpoints dinámicamente sin depender del mapping hardcoded.
+ */
+let _typesList = [];
+
+export const setTypesList = (types) => {
+  _typesList = Array.isArray(types) ? types : [];
+};
+
+export const getTypesList = () => _typesList;
+
+const resolveEndpoint = (tipo) => {
+  const found = _typesList.find(t => t.name === tipo || String(t.id) === String(tipo));
+  if (found && found.endpoint) return found.endpoint;
+  return INPUT_ENDPOINTS[tipo] || null;
+};
+
+const resolveTypeId = (tipo) => {
+  const found = _typesList.find(t => t.name === tipo || String(t.id) === String(tipo));
+  return found ? found.id : null;
 };
 
 /**
@@ -1112,19 +1136,26 @@ export const deleteTypeInput = async (id) => {
 };
 
 /**
- * Obtiene la lista de insumos de una tabla técnica específica.
- * Esto permite realizar búsquedas directas en el módulo seleccionado.
+ * Obtiene la lista de insumos de una tabla técnica específica usando el endpoint unificado.
+ * Resuelve el type_inputs_id desde la caché de tipos y llama a GET /api/type-inputs/:id/inputs.
+ * Inyecta el nombre del tipo ('tipo') en cada resultado para compatibilidad con el frontend.
  */
 export const getInsumosByType = async (tipo) => {
   try {
     const token = localStorage.getItem('token');
-    const modulePath = INPUT_ENDPOINTS[tipo];
     
-    if (!modulePath) {
-      throw new Error(`No se encontró un endpoint para el tipo: ${tipo}`);
+    // 1. Resolver el ID del tipo desde la caché local
+    const typeId = resolveTypeId(tipo);
+    if (!typeId) {
+      throw new Error(`No se encontró configuración para el tipo: ${tipo}`);
     }
 
-    const response = await fetch(`${API_URL}/${modulePath}`, {
+    // Buscar el nombre del tipo para inyectarlo en los resultados
+    const typeRecord = _typesList.find(t => t.id === typeId || String(t.id) === String(typeId));
+    const typeName = typeRecord ? typeRecord.name : tipo;
+
+    // 2. Usar el nuevo endpoint unificado del backend
+    const response = await fetch(`${API_URL}/type-inputs/${typeId}/inputs`, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${token}`,
@@ -1135,8 +1166,8 @@ export const getInsumosByType = async (tipo) => {
     if (!response.ok) throw new Error('Error al conectar con la tabla técnica');
     const data = await response.json();
     const results = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
-    // Inyectamos el tipo para que el frontend mantenga el mapeo de labels
-    return results.map(item => ({ ...item, tipo }));
+    // Inyectamos 'tipo' (nombre) para que el frontend mantenga el mapeo de labels y filtrado
+    return results.map(item => ({ ...item, tipo: typeName }));
   } catch (error) {
     console.error("Error en getInsumosByType:", error);
     throw error;
@@ -1145,6 +1176,7 @@ export const getInsumosByType = async (tipo) => {
 
 /**
  * Registra un insumo en su tabla técnica específica según el tipo.
+ * Resuelve el endpoint dinámicamente desde la caché de tipos.
  */
 export const registerInsumo = async (insumoData) => {
   try {
@@ -1152,7 +1184,7 @@ export const registerInsumo = async (insumoData) => {
     
     // Extraemos 'tipo' para la URL y lo quitamos del cuerpo para evitar error 400
     const { tipo, ...dataToSend } = insumoData;
-    const modulePath = INPUT_ENDPOINTS[tipo];
+    const modulePath = resolveEndpoint(tipo);
     
     if (!modulePath) {
       throw new Error(`No se encontró un endpoint configurado para el tipo: ${tipo}`);
@@ -1181,13 +1213,14 @@ export const registerInsumo = async (insumoData) => {
 
 /**
  * Servicio para actualizar las especificaciones de un insumo existente.
+ * Resuelve el endpoint dinámicamente desde la caché de tipos.
  */
 export const updateInsumo = async (id, insumoData) => {
   try {
     const token = localStorage.getItem('token');
     
     const { tipo, ...dataToSend } = insumoData;
-    const modulePath = INPUT_ENDPOINTS[tipo];
+    const modulePath = resolveEndpoint(tipo);
 
     if (!modulePath) {
       throw new Error(`No se encontró un endpoint configurado para el tipo: ${tipo}`);
