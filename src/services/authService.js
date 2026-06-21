@@ -3,8 +3,7 @@
  */
 // CONFIGURACIÓN DE URL DE API
 // Descomenta la línea que necesites usar según el entorno:
-//const API_URL = '/api'; // <--- USAR PARA DESARROLLO LOCAL (Vite Proxy)
-const API_URL = 'https://backend-sealing-products.onrender.com/api'; // <--- USAR PARA PRODUCCIÓN (Render)
+const API_URL = '/api'; // <--- USAR PARA DESARROLLO LOCAL (Vite Proxy)
 
 export const loginUser = async (username, password) => {
   try {
