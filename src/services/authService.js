@@ -822,7 +822,7 @@ export const getMasterInputsBySupplier = async (supplierId) => {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No hay una sesión activa.');
 
-    const response = await fetch(`${API_URL}/master-inputs?suppliers_id=${supplierId}`, {
+    const response = await fetch(`${API_URL}/master-inputs?suppliers_id=${supplierId}&status=Vigente`, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${token}`,
@@ -1001,7 +1001,7 @@ export const getInsumos = async () => {
   try {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No hay una sesión activa.');
-    const response = await fetch(`${API_URL}/master-inputs`, {
+    const response = await fetch(`${API_URL}/master-inputs?status=Vigente`, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${token}`,

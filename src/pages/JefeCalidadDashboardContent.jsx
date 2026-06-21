@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getSuppliers, registerSupplier, assignMasterInput, getInsumosByType, getInsumos, deleteMasterInput, getMasterInputsBySupplier, updateSupplier, updateMasterInputStatus, getTypeInputs } from '../services/authService';
+import { getSuppliers, registerSupplier, assignMasterInput, getInsumosByType, getInsumos, deleteMasterInput, getMasterInputsBySupplier, updateSupplier, updateMasterInputStatus, getTypeInputs, setTypesList } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
 
 const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications }) => {
@@ -120,7 +120,10 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
   useEffect(() => {
     if (activeAction === 'proveedores') {
       getTypeInputs()
-        .then(data => setTypeInputsList(data))
+        .then(data => {
+          setTypeInputsList(data);
+          setTypesList(data);
+        })
         .catch(error => console.error("Error al cargar tipos de insumo:", error));
     }
   }, [activeAction]);
@@ -389,8 +392,9 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
       // Captura y conversión forzada a entero
       const supplierId = assignData.suppliers_id ? parseInt(assignData.suppliers_id, 10) : NaN;
       
-      // Captura del ID del tipo (usamos el mapeo que ya sabemos que funciona)
-      const typeId = typeIdMapping[assignData.type_inputs_id];
+      // Captura del ID del tipo resolviendo desde la lista de tipos de la BD
+      const selectedType = typeInputsList.find(t => t.name === assignData.type_inputs_id);
+      const typeId = selectedType ? selectedType.id : null;
 
       // VALIDACIÓN ESTRICTA: Si el ID no es un número válido o es <= 0, detenemos todo.
       if (isNaN(supplierId) || supplierId <= 0) {

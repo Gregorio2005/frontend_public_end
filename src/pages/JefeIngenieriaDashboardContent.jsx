@@ -830,6 +830,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                         {visibleSpecs.map(key => (
                           <th key={key}>{getLabel(key, selectedTypeId)}</th>
                         ))}
+                        <th className="text-center">Estado</th>
                         <th className="text-center">Acciones</th>
                       </tr>
                     </thead>
@@ -851,6 +852,11 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                               </td>
                             );
                           })}
+                          <td className="text-center">
+                            <span className={`role-badge badge-${(ins.master_status || 'sin-estado').toLowerCase().replace(/\s/g, '-')}`}>
+                              {ins.master_status || 'Sin estado'}
+                            </span>
+                          </td>
                           <td className="text-center">
                             <button className="btn-icon-edit" title="Editar" onClick={() => handleEditClick(ins)}>✏️</button>
                           </td>
@@ -889,7 +895,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                     <tbody>
                       <tr>
                         <td>
-                          <input type="text" name="reference" className="field-input" value={editFormData.reference || editFormData.referencia} onChange={handleEditChange} required />
+                          <input type="text" name="reference" className="field-input" value={editFormData.reference || editFormData.referencia} readOnly style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed' }} required />
                         </td>
                         {getSpecsByTypeId(editFormData.type_inputs_id).map(key => (
                           <td key={key}>
