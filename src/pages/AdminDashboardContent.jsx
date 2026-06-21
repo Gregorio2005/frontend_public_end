@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, getUsers, updateUser, getApplicants, updateApplicantStatus, updateProfile, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults } from '../services/authService'; 
+import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
  
-const AdminDashboardContent = ({ activeAction, refreshKey }) => {
+const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications }) => {
   // Estado inicial siguiendo el orden de la base de datos
   const [formData, setFormData] = useState({
     user: '',
@@ -185,8 +185,29 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
   const [applicants, setApplicants] = useState([]);
   const [fetchingApplicants, setFetchingApplicants] = useState(false);
 
+  const refreshApplicants = async () => {
+    try {
+      const data = await getApplicants();
+      setApplicants(data);
+    } catch (error) {
+      console.error("Error al recargar postulantes:", error);
+    }
+  };
+
+  // Estado para el modal de detalle de postulante
+  const [selectedApplicant, setSelectedApplicant] = useState(null);
+  const [editApplicantData, setEditApplicantData] = useState({
+    interview_formal_date: '',
+    interview_formal_result: '',
+    interview_medical_date: '',
+    interview_medical_result: '',
+  });
+
   // Estado interno para alternar entre la lista de usuarios y el registro
   const [subView, setSubView] = useState('list'); // 'list' o 'add'
+
+  // Estado para tabs de Página Web (Comunicado web / Postulantes)
+  const [websiteTab, setWebsiteTab] = useState('notices');
 
   // Estado para el Modal de Confirmación
   const [confirmModal, setConfirmModal] = useState({
@@ -367,21 +388,87 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
     return roles[id] || 'Desconocido';
   };
 
-  // Manejador para cambiar el estado del postulante
-  const handleToggleStatus = (applicant) => {
-    const isActivating = applicant.status !== 'Activo';
-    
+  // Abrir detalle de un postulante
+  const handleOpenApplicantDetail = (applicant) => {
+    setSelectedApplicant(applicant);
+    const hasFormalDate = !!applicant.interview_formal_date;
+    const hasMedicalDate = !!applicant.interview_medical_date;
+
+    // Formatear datetime para input datetime-local (YYYY-MM-DDTHH:MM)
+    const formatDatetime = (dateStr) => {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+
+    setEditApplicantData({
+      interview_formal_date: formatDatetime(applicant.interview_formal_date),
+      interview_formal_result: hasFormalDate ? (applicant.interview_formal_result || 'Pendiente') : '',
+      interview_medical_date: formatDatetime(applicant.interview_medical_date),
+      interview_medical_result: hasMedicalDate ? (applicant.interview_medical_result || 'Pendiente') : '',
+    });
+  };
+
+  // Cerrar detalle de postulante
+  const handleCloseApplicantDetail = () => {
+    setSelectedApplicant(null);
+    setEditApplicantData({
+      interview_formal_date: '',
+      interview_formal_result: '',
+      interview_medical_date: '',
+      interview_medical_result: '',
+    });
+  };
+
+  // Guardar cambios del postulante (solo entrevistas, el status se deriva server-side)
+  const handleSaveApplicant = async () => {
+    // Validación: si el resultado formal es aprobado, debe tener fecha médica
+    if (editApplicantData.interview_formal_result === 'Entrevista formal aprobada' && !editApplicantData.interview_medical_date) {
+      showNotification('Debe asignar una fecha para la entrevista médica antes de aprobar la entrevista formal.', 'error');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        interview_formal_date: editApplicantData.interview_formal_date || null,
+        interview_formal_result: editApplicantData.interview_formal_result && editApplicantData.interview_formal_result !== 'Pendiente' ? editApplicantData.interview_formal_result : null,
+        interview_medical_date: editApplicantData.interview_medical_date || null,
+        interview_medical_result: editApplicantData.interview_medical_result && editApplicantData.interview_medical_result !== 'Pendiente' ? editApplicantData.interview_medical_result : null,
+      };
+      const result = await updateApplicant(selectedApplicant.id, payload);
+      await refreshApplicants();
+      refreshNotifications();
+      showNotification('Postulante actualizado correctamente.');
+      handleCloseApplicantDetail();
+    } catch (error) {
+      showNotification(`Error: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Descartar postulante
+  const handleDiscardApplicant = async () => {
     setConfirmModal({
       isOpen: true,
-      title: isActivating ? 'Activar Postulante' : 'Desactivar Postulante',
-      message: `¿Está seguro de que desea cambiar el estado de ${applicant.name} ${applicant.lastname} a ${isActivating ? 'Activo' : 'Inactivo'}?`,
+      title: 'Confirmar Descarte',
+      message: `¿Está seguro de descartar a ${selectedApplicant.name} ${selectedApplicant.lastname}? Esta acción no se puede deshacer.`,
       onConfirm: async () => {
         setLoading(true);
         try {
-          const newStatus = isActivating ? 'Activo' : 'Inactivo';
-          await updateApplicantStatus(applicant.id, newStatus);
-          setApplicants(prev => prev.map(a => a.id === applicant.id ? { ...a, status: newStatus } : a));
-          showNotification(`Postulante ${isActivating ? 'activado' : 'desactivado'} correctamente.`);
+          await discardApplicant(selectedApplicant.id);
+          const updated = { ...selectedApplicant, status: 'Descartado' };
+          setSelectedApplicant(updated);
+          await refreshApplicants();
+          refreshNotifications();
+          showNotification('Postulante descartado correctamente.');
         } catch (error) {
           showNotification(`Error: ${error.message}`, 'error');
         } finally {
@@ -390,6 +477,56 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
         }
       }
     });
+  };
+
+  // Contratar postulante
+  const handleHireApplicant = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Confirmar Contratación',
+      message: `¿Está seguro de contratar a ${selectedApplicant.name} ${selectedApplicant.lastname}?`,
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          await hireApplicant(selectedApplicant.id);
+          const updated = { ...selectedApplicant, status: 'Contratado' };
+          setSelectedApplicant(updated);
+          await refreshApplicants();
+          refreshNotifications();
+          showNotification('Postulante contratado correctamente.');
+        } catch (error) {
+          showNotification(`Error: ${error.message}`, 'error');
+        } finally {
+          setLoading(false);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
+  };
+
+  // Abrir CV en nueva pestaña
+  const handleViewCv = (applicantId) => {
+    const url = getCvUrl(applicantId);
+    window.open(url, '_blank');
+  };
+
+  // Badge de color para el status
+  const getStatusBadgeStyle = (status) => {
+    const styles = {
+      'Pendiente': { backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' },
+      'En revision': { backgroundColor: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd' },
+      'Entrevista formal pendiente': { backgroundColor: '#e0e7ff', color: '#3730a3', border: '1px solid #a5b4fc' },
+      'Entrevista formal aprobada': { backgroundColor: '#d1fae5', color: '#065f46', border: '1px solid #6ee7b7' },
+      'Entrevista formal rechazada': { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' },
+      'Entrevista medica pendiente': { backgroundColor: '#fce7f3', color: '#9d174d', border: '1px solid #f9a8d4' },
+      'Entrevista medica aprobada': { backgroundColor: '#d1fae5', color: '#065f46', border: '1px solid #6ee7b7' },
+      'Entrevista medica rechazada': { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' },
+      'Contratado': { backgroundColor: '#d1fae5', color: '#065f46', border: '1px solid #34d399' },
+      'Descartado': { backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #9ca3af' },
+      'Aprobado': { backgroundColor: '#d1fae5', color: '#065f46', border: '1px solid #6ee7b7' },
+      'Rechazado': { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' },
+    };
+    return styles[status] || { backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #9ca3af' };
   };
 
   // Lógica de filtrado para el buscador (Nombre y CI sin prefijos)
@@ -421,7 +558,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
 
   return (
     <div className="dashboard-content-body">
-      {/* Modal de Confirmación Custom (Reemplazo de localhost dice) */}
+      {/* Modal de Confirmación Custom */}
       <ConfirmModal 
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
@@ -431,6 +568,215 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
         confirmText="Aceptar"
         cancelText="Cancelar"
       />
+
+      {/* Modal de Detalle de Postulante */}
+      {selectedApplicant && (
+        <div className="modal-overlay" onClick={handleCloseApplicantDetail}>
+          <div className="modal-container" style={{ maxWidth: '600px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
+              <span className="material-symbols-outlined">person</span>
+              <h3>Detalle del Postulante</h3>
+            </div>
+            <div className="modal-body" style={{ padding: '1.5rem' }}>
+              {/* Datos Personales */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem', color: 'var(--primary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Datos Personales
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Nombre</label>
+                    <p style={{ margin: 0, fontWeight: '600' }}>{selectedApplicant.name} {selectedApplicant.lastname}</p>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>CI</label>
+                    <p style={{ margin: 0, fontWeight: '600' }}>{selectedApplicant.ci}</p>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Email</label>
+                    <p style={{ margin: 0 }}>{selectedApplicant.email}</p>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Teléfono</label>
+                    <p style={{ margin: 0 }}>{selectedApplicant.phone || '—'}</p>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Fecha de Nacimiento</label>
+                    <p style={{ margin: 0 }}>{selectedApplicant.birth_date ? new Date(selectedApplicant.birth_date).toLocaleDateString('es-VE') : '—'}</p>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Rol</label>
+                    <p style={{ margin: 0 }}><span className="role-badge">{selectedApplicant.rol}</span></p>
+                  </div>
+                </div>
+                {selectedApplicant.cv_path && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => handleViewCv(selectedApplicant.id)}
+                      style={{ fontSize: '0.85rem' }}
+                    >
+                      📄 Ver Currículum Vitae
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Estado y Entrevistas */}
+              <div style={{ borderTop: '1px solid var(--outline-variant)', paddingTop: '1.5rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem', color: 'var(--primary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Gestión del Proceso
+                </h4>
+                <div className="form-grid" style={{ gap: '0.75rem' }}>
+                  {/* Lógica de bloqueo de campos - basada en el estado GUARDADO */}
+                  {(() => {
+                    const status = selectedApplicant?.status;
+                    const isTerminal = ['Descartado', 'Contratado', 'Rechazado'].includes(status);
+
+                    // Valores GUARDADOS (lo que ya está en la BD)
+                    const savedFormalDate = selectedApplicant?.interview_formal_date;
+                    const savedFormalResult = selectedApplicant?.interview_formal_result;
+                    const savedMedicalDate = selectedApplicant?.interview_medical_date;
+                    const savedMedicalResult = selectedApplicant?.interview_medical_result;
+
+                    // Paso 1: No hay fecha formal → solo fecha formal editable
+                    // Paso 2: Hay fecha formal pero no resultado → resultado formal + fecha médica editable
+                    // Paso 3: Hay fecha médica pero no resultado médico → resultado médico editable
+                    const isFormalDateEditable = !isTerminal && !savedFormalDate;
+                    const isFormalResultEditable = !isTerminal && !!savedFormalDate && !savedFormalResult;
+                    const isMedicalDateEditable = !isTerminal && !!savedFormalDate && !savedFormalResult;
+                    const isMedicalResultEditable = !isTerminal && !!savedMedicalDate && !savedMedicalResult;
+
+                    return (
+                      <>
+                        {/* Estado Actual (solo lectura) + botones de acción */}
+                        <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                          <label style={{ fontSize: '0.8rem', fontWeight: '600' }}>Estado Actual:</label>
+                          <span style={{
+                            ...getStatusBadgeStyle(status),
+                            padding: '6px 14px',
+                            borderRadius: '16px',
+                            fontSize: '0.85rem',
+                            fontWeight: '700',
+                          }}>
+                            {status || 'Sin definir'}
+                          </span>
+                          {!isTerminal && (
+                            <button
+                              className="btn"
+                              onClick={handleDiscardApplicant}
+                              disabled={loading}
+                              style={{
+                                backgroundColor: '#fee2e2',
+                                color: '#991b1b',
+                                border: '1px solid #fca5a5',
+                                padding: '6px 14px',
+                                fontSize: '0.8rem',
+                                fontWeight: '600',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Descartar
+                            </button>
+                          )}
+                          {status === 'Aprobado' && (
+                            <button
+                              className="btn btn-primary"
+                              onClick={handleHireApplicant}
+                              disabled={loading}
+                              style={{
+                                padding: '6px 14px',
+                                fontSize: '0.8rem',
+                                fontWeight: '600',
+                                borderRadius: '8px',
+                              }}
+                            >
+                              Contratar
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Entrevista Formal */}
+                        <div style={{ gridColumn: 'span 2', marginTop: '0.5rem' }}>
+                          <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--primary)' }}>Entrevista Formal / Técnica</label>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
+                            <div className="form-field">
+                              <label style={{ fontSize: '0.75rem' }}>Fecha</label>
+                              <input
+                                type="datetime-local"
+                                className="field-input"
+                                value={editApplicantData.interview_formal_date}
+                                disabled={!isFormalDateEditable}
+                                onChange={(e) => setEditApplicantData(prev => ({ ...prev, interview_formal_date: e.target.value }))}
+                                style={{ opacity: !isFormalDateEditable ? 0.5 : 1 }}
+                              />
+                            </div>
+                            <div className="form-field">
+                              <label style={{ fontSize: '0.75rem' }}>Resultado</label>
+                              <select
+                                className="field-input"
+                                value={editApplicantData.interview_formal_result}
+                                disabled={!isFormalResultEditable}
+                                onChange={(e) => setEditApplicantData(prev => ({ ...prev, interview_formal_result: e.target.value }))}
+                                style={{ opacity: !isFormalResultEditable ? 0.5 : 1 }}
+                              >
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="Entrevista formal aprobada">Aprobado</option>
+                                <option value="Entrevista formal rechazada">Rechazado</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Entrevista Médica */}
+                        <div style={{ gridColumn: 'span 2', marginTop: '0.5rem' }}>
+                          <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--primary)' }}>Entrevista Médica</label>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
+                            <div className="form-field">
+                              <label style={{ fontSize: '0.75rem' }}>Fecha</label>
+                              <input
+                                type="datetime-local"
+                                className="field-input"
+                                value={editApplicantData.interview_medical_date}
+                                disabled={!isMedicalDateEditable}
+                                onChange={(e) => setEditApplicantData(prev => ({ ...prev, interview_medical_date: e.target.value }))}
+                                style={{ opacity: !isMedicalDateEditable ? 0.5 : 1 }}
+                              />
+                            </div>
+                            <div className="form-field">
+                              <label style={{ fontSize: '0.75rem' }}>Resultado</label>
+                              <select
+                                className="field-input"
+                                value={editApplicantData.interview_medical_result}
+                                disabled={!isMedicalResultEditable}
+                                onChange={(e) => setEditApplicantData(prev => ({ ...prev, interview_medical_result: e.target.value }))}
+                                style={{ opacity: !isMedicalResultEditable ? 0.5 : 1 }}
+                              >
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="Entrevista medica aprobada">Aprobado</option>
+                                <option value="Entrevista medica rechazada">Rechazado</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--outline-variant)', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button className="btn btn-secondary" onClick={handleCloseApplicantDetail}>
+                Cerrar
+              </button>
+              <button className="btn btn-primary" onClick={handleSaveApplicant} disabled={loading}>
+                {loading ? 'Guardando...' : 'Guardar Cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notificación Toast Industrial */}
       <div className={`notification-toast ${notification.visible ? 'visible' : ''} ${notification.type}`}>
@@ -653,185 +999,265 @@ const AdminDashboardContent = ({ activeAction, refreshKey }) => {
 
       {activeAction === 'applicants' && (
         <div className="form-container">
-          {/* NUEVA SECCIÓN: Gestión de Avisos Públicos */}
-          <div style={{ marginBottom: '2.5rem', padding: '1.5rem', backgroundColor: 'var(--surface-variant)', borderRadius: '12px', border: '2px dashed var(--primary)' }}>
-            <h3 style={{ fontSize: '1rem', color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span className="material-symbols-outlined">campaign</span>
-              Comunicados para el Sitio Web
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--secondary)', marginBottom: '1rem' }}>
-              Seleccione una categoría para actualizar automáticamente el anuncio en la parte superior del sitio web.
-            </p>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div className="form-field" style={{ flex: 1, minWidth: '300px' }}>
-                <label>Nombre del Comunicado (Ej: VACANTE ACTIVA: ADMINISTRADOR)</label>
-                <input 
-                  type="text" 
-                  name="name" 
-                  className="field-input" 
-                  value={websiteNotice.name} 
-                  onChange={handleWebsiteNoticeChange} 
-                  placeholder="Nombre de la vacante o comunicado" 
-                  required 
-                />
-              </div>
-              <div className="form-field" style={{ flexBasis: '100%' }}>
-                <label>Descripción del Mensaje</label>
-                <textarea 
-                  name="note" 
-                  className="field-input" 
-                  value={websiteNotice.note} 
-                  onChange={handleWebsiteNoticeChange} 
-                  placeholder="Detalle el mensaje que se mostrará en el sitio web..." 
-                  rows="4" 
-                  required 
-                />
-              </div>
-              <button 
-                className="btn btn-primary" 
-                onClick={async () => {
-                  setLoading(true);
-                  try {
-                    if (!websiteNotice.name || !websiteNotice.note) {
-                      showNotification("El nombre y la descripción del aviso no pueden estar vacíos.", "error");
-                      setLoading(false);
-                      return;
-                    } 
-                    const updatedNotice = await updateWebsiteNotice(websiteNotice.name, websiteNotice.note);
-                    setWebsiteNotice(updatedNotice); // Actualiza con la respuesta del backend
-                    loadNotices(); // Refresca la tabla
-                    showNotification("Comunicado del sitio web actualizado correctamente.");
-                  } catch (err) {
-                    showNotification(`Error al actualizar el comunicado: ${err.message}`, "error");
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                disabled={loading}
-              >
-                {loading ? 'Guardando...' : 'Guardar Comunicado'}
-              </button>
-            </div>
+          {/* Tabs de navegación */}
+          <div className="tab-navigation" style={{ marginBottom: '2rem', display: 'flex', gap: '1rem' }}>
+            <button
+              className={`btn ${websiteTab === 'notices' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setWebsiteTab('notices')}
+            >
+              Comunicado web
+            </button>
+            <button
+              className={`btn ${websiteTab === 'applicants' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setWebsiteTab('applicants')}
+            >
+              Postulantes
+            </button>
           </div>
 
-          {/* TABLA DE MENSAJES DISPONIBLES */}
-          <div style={{ marginBottom: '2.5rem' }}>
-            <h3 style={{ fontSize: '1rem', color: 'var(--secondary)', marginBottom: '1rem', fontWeight: '700' }}>
-              Historial de Avisos Registrados
-            </h3>
-            <div className="table-container-card">
-              <div className="table-filters">
-                <div className="table-search-wrapper">
-                  <span className="material-symbols-outlined">search</span>
-                  <input 
-                    type="text" 
-                    className="table-search-input" 
-                    placeholder="Buscar en el historial de avisos..." 
-                    value={noticeSearchTerm}
-                    onChange={(e) => setNoticeSearchTerm(e.target.value)}
-                  />
+          {/* CONTENIDO: Tab Comunicado web */}
+          {websiteTab === 'notices' && (
+            <>
+              {/* Formulario de comunicado */}
+              <div style={{ marginBottom: '2.5rem', padding: '1.5rem', backgroundColor: 'var(--surface-variant)', borderRadius: '12px', border: '2px dashed var(--primary)' }}>
+                <h3 style={{ fontSize: '1rem', color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="material-symbols-outlined">campaign</span>
+                  Comunicados para el Sitio Web
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--secondary)', marginBottom: '1rem' }}>
+                  Seleccione una categoría para actualizar automáticamente el anuncio en la parte superior del sitio web.
+                </p>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div className="form-field" style={{ flex: 1, minWidth: '300px' }}>
+                    <label>Nombre del Comunicado (Ej: VACANTE ACTIVA: ADMINISTRADOR)</label>
+                    <input 
+                      type="text" 
+                      name="name" 
+                      className="field-input" 
+                      value={websiteNotice.name} 
+                      onChange={handleWebsiteNoticeChange} 
+                      placeholder="Nombre de la vacante o comunicado" 
+                      required 
+                    />
+                  </div>
+                  <div className="form-field" style={{ flexBasis: '100%' }}>
+                    <label>Descripción del Mensaje</label>
+                    <textarea 
+                      name="note" 
+                      className="field-input" 
+                      value={websiteNotice.note} 
+                      onChange={handleWebsiteNoticeChange} 
+                      placeholder="Detalle el mensaje que se mostrará en el sitio web..." 
+                      rows="4" 
+                      required 
+                    />
+                  </div>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        if (!websiteNotice.name || !websiteNotice.note) {
+                          showNotification("El nombre y la descripción del aviso no pueden estar vacíos.", "error");
+                          setLoading(false);
+                          return;
+                        } 
+                        const updatedNotice = await updateWebsiteNotice(websiteNotice.name, websiteNotice.note);
+                        setWebsiteNotice(updatedNotice);
+                        loadNotices();
+                        showNotification("Comunicado del sitio web actualizado correctamente.");
+                      } catch (err) {
+                        showNotification(`Error al actualizar el comunicado: ${err.message}`, "error");
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading}
+                  >
+                    {loading ? 'Guardando...' : 'Guardar Comunicado'}
+                  </button>
                 </div>
               </div>
-              <div className="table-scroll-wrapper">
-                <table className="industrial-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Nombre / Vacante</th>
-                      <th>Mensaje / Nota</th>
-                      <th className="text-center">Seleccionar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredNotices.length > 0 ? (
-                      filteredNotices.map((item) => (
-                        <tr key={item.id}>
-                          <td style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>#{item.id}</td>
-                          <td style={{ fontWeight: '600' }}>{item.name}</td>
-                          <td style={{ fontSize: '0.85rem' }}>{item.note}</td>
-                          <td className="text-center">
-                            <button 
-                              // Resaltamos si el item tiene status true o si es el cargado actualmente
-                              className={`btn ${item.status || String(websiteNotice.id) === String(item.id) ? 'btn-primary' : 'btn-secondary'}`}
-                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} 
-                              onClick={() => handleSelectNotice(item)}
-                              disabled={processingId !== null || item.status}
-                            >
-                              {item.status ? 'Publicado' : (processingId === item.id ? 'Cargando...' : 'Publicar Aviso')}
-                            </button>
+
+              {/* Tabla histórica de avisos */}
+              <div style={{ marginBottom: '2.5rem' }}>
+                <h3 style={{ fontSize: '1rem', color: 'var(--secondary)', marginBottom: '1rem', fontWeight: '700' }}>
+                  Historial de Avisos Registrados
+                </h3>
+                <div className="table-container-card">
+                  <div className="table-filters">
+                    <div className="table-search-wrapper">
+                      <span className="material-symbols-outlined">search</span>
+                      <input 
+                        type="text" 
+                        className="table-search-input" 
+                        placeholder="Buscar en el historial de avisos..." 
+                        value={noticeSearchTerm}
+                        onChange={(e) => setNoticeSearchTerm(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="table-scroll-wrapper">
+                    <table className="industrial-table">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Nombre / Vacante</th>
+                          <th>Mensaje / Nota</th>
+                          <th className="text-center">Seleccionar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredNotices.length > 0 ? (
+                          filteredNotices.map((item) => (
+                            <tr key={item.id}>
+                              <td style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>#{item.id}</td>
+                              <td style={{ fontWeight: '600' }}>{item.name}</td>
+                              <td style={{ fontSize: '0.85rem' }}>{item.note}</td>
+                              <td className="text-center">
+                                <button 
+                                  className={`btn ${item.status || String(websiteNotice.id) === String(item.id) ? 'btn-primary' : 'btn-secondary'}`}
+                                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} 
+                                  onClick={() => handleSelectNotice(item)}
+                                  disabled={processingId !== null || item.status}
+                                >
+                                  {item.status ? 'Publicado' : (processingId === item.id ? 'Cargando...' : 'Publicar Aviso')}
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr><td colSpan="4" className="text-center no-data">No hay mensajes registrados.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* CONTENIDO: Tab Postulantes */}
+          {websiteTab === 'applicants' && (
+            <>
+              <h2 className="form-title">Postulantes Registrados</h2>
+              {fetchingApplicants ? (
+                <p className="loading-text">Cargando lista de postulantes...</p>
+              ) : (
+                <div className="table-container-card">
+                  <div className="table-scroll-wrapper">
+                  <table className="industrial-table">
+                    <thead>
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Apellido</th>
+                        <th>CI</th>
+                        <th>Estado</th>
+                        <th>Entrevista Formal</th>
+                        <th>Entrevista Médica</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.isArray(applicants) && applicants.length > 0 ? (
+                        [...applicants].sort((a, b) => {
+                          const order = { 'En revision': 0, 'Pendiente': 1, 'Aprobado': 2, 'Contratado': 3, 'Rechazado': 4, 'Descartado': 5 };
+                          const aOrder = order[a.status] ?? 6;
+                          const bOrder = order[b.status] ?? 6;
+                          return aOrder - bOrder;
+                        }).map((a) => (
+                          <tr key={a.id} style={{ cursor: 'pointer' }} onClick={() => handleOpenApplicantDetail(a)}>
+                            <td style={{ fontWeight: '600' }}>{a.name}</td>
+                            <td>{a.lastname}</td>
+                            <td>{a.ci}</td>
+                            <td>
+                              <span style={{
+                                ...getStatusBadgeStyle(a.status),
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                fontSize: '0.75rem',
+                                fontWeight: '600',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                {a.status}
+                              </span>
+                            </td>
+                            <td>
+                              {a.interview_formal_result ? (
+                                <span style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  whiteSpace: 'nowrap',
+                                  backgroundColor: a.interview_formal_result.includes('aprobada') ? '#d1fae5' : a.interview_formal_result.includes('rechazada') ? '#fee2e2' : '#f3f4f6',
+                                  color: a.interview_formal_result.includes('aprobada') ? '#065f46' : a.interview_formal_result.includes('rechazada') ? '#991b1b' : '#374151',
+                                  border: `1px solid ${a.interview_formal_result.includes('aprobada') ? '#6ee7b7' : a.interview_formal_result.includes('rechazada') ? '#fca5a5' : '#9ca3af'}`,
+                                }}>
+                                  {a.interview_formal_result.replace('Entrevista formal ', '')}
+                                </span>
+                              ) : a.interview_formal_date ? (
+                                <span style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  whiteSpace: 'nowrap',
+                                  backgroundColor: '#f3f4f6',
+                                  color: '#374151',
+                                  border: '1px solid #9ca3af',
+                                }}>
+                                  Pendiente
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>—</span>
+                              )}
+                            </td>
+                            <td>
+                              {a.interview_medical_result ? (
+                                <span style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  whiteSpace: 'nowrap',
+                                  backgroundColor: a.interview_medical_result.includes('aprobada') ? '#d1fae5' : a.interview_medical_result.includes('rechazada') ? '#fee2e2' : '#f3f4f6',
+                                  color: a.interview_medical_result.includes('aprobada') ? '#065f46' : a.interview_medical_result.includes('rechazada') ? '#991b1b' : '#374151',
+                                  border: `1px solid ${a.interview_medical_result.includes('aprobada') ? '#6ee7b7' : a.interview_medical_result.includes('rechazada') ? '#fca5a5' : '#9ca3af'}`,
+                                }}>
+                                  {a.interview_medical_result.replace('Entrevista medica ', '')}
+                                </span>
+                              ) : a.interview_medical_date ? (
+                                <span style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  whiteSpace: 'nowrap',
+                                  backgroundColor: '#f3f4f6',
+                                  color: '#374151',
+                                  border: '1px solid #9ca3af',
+                                }}>
+                                  Pendiente
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="6" className="text-center no-data">
+                            No hay postulantes registrados o no se pudieron cargar.
                           </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr><td colSpan="4" className="text-center no-data">No hay mensajes registrados.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <h2 className="form-title">Postulantes Registrados</h2>
-          {fetchingApplicants ? (
-            <p className="loading-text">Cargando lista de postulantes...</p>
-          ) : (
-            <div className="table-container-card">
-              <div className="table-scroll-wrapper">
-              <table className="industrial-table">
-                <thead>
-                  <tr>
-                    <th>Nombre</th>
-                    <th>Apellido</th>
-                    <th style={{ minWidth: '130px' }}>CI</th>
-                    <th>Email</th>
-                    <th>Rol</th>
-                    <th>Estado</th>
-                    <th className="text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.isArray(applicants) && applicants.length > 0 ? (
-                    applicants.map((a) => (
-                      <tr key={a.id}>
-                        <td>{a.name}</td>
-                        <td>{a.lastname}</td>
-                        <td>{a.ci}</td>
-                        <td>{a.email}</td>
-                        <td><span className="role-badge">{a.rol}</span></td>
-                        <td>
-                          <div className="status-indicator">
-                            <div className={`status-dot ${a.status?.toLowerCase() === 'activo' ? 'active' : 'inactive'}`}></div>
-                            <span style={{ 
-                              color: a.status?.toLowerCase() === 'activo' ? 'var(--on-surface)' : 'var(--secondary)',
-                              fontSize: '0.85rem' 
-                            }}>
-                              {a.status}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="text-center">
-                          <button 
-                            className="btn-icon-edit" 
-                            title={a.status === 'Activo' ? "Desactivar" : "Activar"}
-                            onClick={() => handleToggleStatus(a)}
-                            disabled={loading}
-                          >
-                            {a.status === 'Activo' ? '🔒' : '🔓'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan="7" className="text-center no-data">
-                        No hay postulantes registrados o no se pudieron cargar.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              </div>
-            </div>
+                      )}
+                    </tbody>
+                  </table>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

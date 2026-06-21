@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getInsumos, registerInsumo, updateInsumo, getInsumosByType, getBills, getBillInputsByBillId, getInspectionResults, updateInspection, getTypeInputs, createTypeInput, updateTypeInput, deleteTypeInput } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
 
-const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
+const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotifications }) => {
   const [formData, setFormData] = useState({
     tipo: '',
     reference: '',
@@ -276,6 +276,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
     setLoading(true);
     try {
       await createTypeInput(newTypeName.trim());
+      refreshNotifications();
       showNotification('Tipo de insumo registrado exitosamente');
       setNewTypeName('');
       await loadTypeInputs();
@@ -546,6 +547,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user }) => {
 
     try {
       await registerInsumo(cleanPayload);
+      refreshNotifications();
       showNotification("Insumo técnico registrado con éxito.");
       
       // Limpiar formulario

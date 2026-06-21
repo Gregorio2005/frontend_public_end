@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { updateProfile, getProfile, getBills, getSuppliers, getInspectionStats, getManufacturingFlow } from '../services/authService';
 import Logo from '../components/Logo';
 import ConfirmModal from '../components/ConfirmModal';
+import NotificationBell from '../components/NotificationBell';
 import logoImg from '../assets/logo.jpeg';
 import './Dashboard.css';
 
@@ -17,6 +18,11 @@ const Dashboard = ({ user = {}, onLogout }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [profileData, setProfileData] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const bellRef = useRef(null);
+
+  const refreshNotifications = () => {
+    bellRef.current?.refresh();
+  };
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -267,7 +273,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
   const getPanelTitle = (action) => {
     const titles = {
       users: 'Usuarios',
-      applicants: 'Postulantes',
+      applicants: 'Página web',
       view_inspections: 'Ver Inspecciones',
       add_factura: 'Agregar Factura',
       inspection: 'Inspección',
@@ -431,13 +437,13 @@ const Dashboard = ({ user = {}, onLogout }) => {
     if (activeAction) {
     switch (userRole) {
       case 'Administrador':
-        return <AdminDashboardContent activeAction={activeAction} refreshKey={refreshKey} />;
+        return <AdminDashboardContent activeAction={activeAction} refreshKey={refreshKey} refreshNotifications={refreshNotifications} />;
       case 'Jefe de Calidad':
-        return <JefeCalidadDashboardContent activeAction={activeAction} user={profileData || user} />;
+        return <JefeCalidadDashboardContent activeAction={activeAction} user={profileData || user} refreshNotifications={refreshNotifications} />;
       case 'Jefe de Ingeniería':
-        return <JefeIngenieriaDashboardContent activeAction={activeAction} user={profileData || user} />;
+        return <JefeIngenieriaDashboardContent activeAction={activeAction} user={profileData || user} refreshNotifications={refreshNotifications} />;
       case 'Trabajador':
-        return <TrabajadorDashboardContent activeAction={activeAction} user={profileData || user} />;
+        return <TrabajadorDashboardContent activeAction={activeAction} user={profileData || user} refreshNotifications={refreshNotifications} />;
       default:
         return (
           <section className="status-card error">
@@ -613,8 +619,8 @@ const Dashboard = ({ user = {}, onLogout }) => {
                 Usuarios
               </button>
               <button className={`nav-link ${activeAction === 'applicants' ? 'active' : ''}`} onClick={() => handleActionClick('applicants')}>
-                <span className="material-symbols-outlined">assignment_ind</span>
-                Postulantes
+                <span className="material-symbols-outlined">language</span>
+                Página web
               </button>
               <button className={`nav-link ${activeAction === 'view_inspections' ? 'active' : ''}`} onClick={() => handleActionClick('view_inspections')}>
                 <span className="material-symbols-outlined">visibility</span>
@@ -687,6 +693,7 @@ const Dashboard = ({ user = {}, onLogout }) => {
           </div>
 
           <div className="header-right">
+            <NotificationBell ref={bellRef} />
             <div className={`user-profile-trigger ${activeAction === 'profile' ? 'active-profile' : ''}`} onClick={() => handleActionClick('profile')}>
               <div className="user-info">
                 <p className="user-name">{profileData?.name || user.name}</p>

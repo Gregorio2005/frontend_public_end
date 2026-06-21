@@ -1,11 +1,11 @@
 import React from 'react';
 import '../pages/Dashboard.css';
 
-const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, confirmText = "Confirmar", cancelText = "Cancelar", type = "danger" }) => {
+const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, confirmText = "Confirmar", cancelText = "Cancelar", type = "danger", overlayStyle = {} }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" style={{ zIndex: 4000, ...overlayStyle }}>
       <div className="modal-container">
         <div className={`modal-header ${type}`}>
           <span className="material-symbols-outlined">

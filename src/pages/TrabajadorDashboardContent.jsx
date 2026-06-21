@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getSuppliers, getMasterInputsBySupplier, registerBill, registerBillInput, getBills, getBillInputsByBillId, registerInspection, getTypeInputs } from '../services/authService';
 
-const TrabajadorDashboardContent = ({ activeAction, user }) => {
+const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }) => {
   const [formData, setFormData] = useState({
     numero_factura: '',
     fecha_factura: '',
@@ -386,6 +386,7 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
       });
 
       await Promise.all(inputPromises);
+      refreshNotifications();
       showNotification("Factura e insumos registrados con éxito en el sistema.");
       
       // Limpiar formulario
@@ -476,6 +477,7 @@ const TrabajadorDashboardContent = ({ activeAction, user }) => {
       
       await Promise.all(promises);
 
+      refreshNotifications();
       showNotification("Inspección guardada físicamente en la base de datos.");
       setInspectionData({ invoiceId: '', insumoIndex: '', details: {} });
     } catch (err) {

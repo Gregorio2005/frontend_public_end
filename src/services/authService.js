@@ -868,28 +868,88 @@ export const submitApplication = async (applicantData) => {
 };
 
 /**
- * Servicio para actualizar el estado de un postulante.
+ * Actualiza un postulante completo (status, entrevistas, resultados).
  */
-export const updateApplicantStatus = async (applicantId, newStatus) => {
+export const updateApplicant = async (applicantId, data) => {
   try {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/applicants/${applicantId}/status`, {
+    const response = await fetch(`${API_URL}/applicants/${applicantId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ status: newStatus })
+      body: JSON.stringify(data)
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Error al actualizar el estado');
+      throw new Error(errorData.message || 'Error al actualizar el postulante');
     }
 
     return await response.json();
   } catch (error) {
-    console.error("Error en updateApplicantStatus:", error);
+    console.error("Error en updateApplicant:", error);
+    throw error;
+  }
+};
+
+/**
+ * Obtiene la URL del CV de un postulante.
+ */
+export const getCvUrl = (applicantId) => {
+  const token = localStorage.getItem('token');
+  return `${API_URL}/applicants/${applicantId}/cv?token=${token}`;
+};
+
+/**
+ * Descarta un postulante (status = 'Descartado').
+ */
+export const discardApplicant = async (applicantId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/applicants/${applicantId}/discard`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al descartar el postulante');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en discardApplicant:", error);
+    throw error;
+  }
+};
+
+/**
+ * Contrata un postulante (status = 'Contratado').
+ */
+export const hireApplicant = async (applicantId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/applicants/${applicantId}/hire`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al contratar el postulante');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error en hireApplicant:", error);
     throw error;
   }
 };
@@ -1271,4 +1331,48 @@ export const updateWebsiteNotice = async (name, note) => {
   } catch (error) {
     throw error;
   }
+};
+
+// =============================================
+// Servicios de Notificaciones
+// =============================================
+
+export const getNotifications = async () => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/notificaciones`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Error al obtener notificaciones');
+  const res = await response.json();
+  return res.data;
+};
+
+export const getUnreadCount = async () => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/notificaciones/unread-count`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Error al obtener conteo');
+  const res = await response.json();
+  return res.data.count;
+};
+
+export const markNotificationAsRead = async (id) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/notificaciones/${id}/read`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Error al marcar notificación');
+  return await response.json();
+};
+
+export const markAllNotificationsAsRead = async () => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/notificaciones/read-all`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Error al marcar notificaciones');
+  return await response.json();
 };

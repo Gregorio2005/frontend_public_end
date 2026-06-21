@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getSuppliers, registerSupplier, assignMasterInput, getInsumosByType, getInsumos, deleteMasterInput, getMasterInputsBySupplier, updateSupplier, updateMasterInputStatus, getTypeInputs } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
 
-const JefeCalidadDashboardContent = ({ activeAction, user }) => {
+const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications }) => {
   const [formData, setFormData] = useState({
     name: ''
   });
@@ -369,6 +369,7 @@ const JefeCalidadDashboardContent = ({ activeAction, user }) => {
       };
 
       await registerSupplier(dataToSend);
+      refreshNotifications();
       showNotification("Proveedor registrado con éxito.");
       
       // Limpiar formulario y volver a la lista
@@ -413,6 +414,7 @@ const JefeCalidadDashboardContent = ({ activeAction, user }) => {
       });
 
       await Promise.all(promises);
+      refreshNotifications();
       showNotification("Asignaciones guardadas con éxito en el Maestro de Insumos.");
       
       setAssignData({ suppliers_id: '', type_inputs_id: '', assignments: [{ inputs_id: '', status: 'Vigente' }] });
