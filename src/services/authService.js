@@ -2,8 +2,8 @@
  * Servicio para manejar la autenticación mediante fetch.
  */
 // CONFIGURACIÓN DE URL DE API
-// Descomenta la línea que necesites usar según el entorno:
-const API_URL = '/api'; // <--- USAR PARA DESARROLLO LOCAL (Vite Proxy)
+// Se resuelve automáticamente según el entorno (.env / .env.production)
+const API_URL = import.meta.env.VITE_API_URL;
 
 export const loginUser = async (username, password) => {
   try {
