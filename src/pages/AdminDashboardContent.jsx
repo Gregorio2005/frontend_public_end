@@ -197,6 +197,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
 
   // Estado para el modal de detalle de postulante
   const [selectedApplicant, setSelectedApplicant] = useState(null);
+  const [cvModalUrl, setCvModalUrl] = useState(null);
   const [editApplicantData, setEditApplicantData] = useState({
     interview_formal_date: '',
     interview_formal_result: '',
@@ -521,10 +522,10 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
     });
   };
 
-  // Abrir CV en nueva pestaña
+  // Abrir CV en modal
   const handleViewCv = (applicantId) => {
     const url = getCvUrl(applicantId);
-    window.open(url, '_blank');
+    setCvModalUrl(url);
   };
 
   // Aprobar foto de perfil
@@ -650,7 +651,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                     <p style={{ margin: 0 }}><span className="role-badge">{selectedApplicant.rol}</span></p>
                   </div>
                 </div>
-                {selectedApplicant.cv_path && (
+                {selectedApplicant.cv_url && (
                   <div style={{ marginTop: '0.75rem' }}>
                     <button
                       className="btn btn-secondary"
@@ -1516,6 +1517,26 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
           {inspectionView.insumoIndex !== '' && inspectionHistory.length === 0 && !loading && (
             <p className="no-data text-center">No se encontraron inspecciones realizadas para este ítem.</p>
           )}
+        </div>
+      )}
+
+      {/* Modal Visor de CV */}
+      {cvModalUrl && (
+        <div className="modal-overlay" onClick={() => setCvModalUrl(null)}>
+          <div className="modal-container" style={{ maxWidth: '900px', width: '95%', height: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ backgroundColor: 'var(--primary)', color: 'white', padding: '0.75rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '12px 12px 0 0', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="material-symbols-outlined">description</span>
+                <h3 style={{ margin: 0, fontSize: '1rem' }}>Currículum Vitae</h3>
+              </div>
+              <button onClick={() => setCvModalUrl(null)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: '4px', display: 'flex' }}>
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+              <iframe src={cvModalUrl} style={{ width: '100%', height: '100%', border: 'none' }} title="CV Viewer" />
+            </div>
+          </div>
         </div>
       )}
 
