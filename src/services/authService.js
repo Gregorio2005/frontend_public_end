@@ -156,7 +156,8 @@ export const updateUser = async (userId, userData) => {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Error del servidor: ${response.status}`);
+      const detail = errorData.errors?.map(e => e.message).join(', ');
+      throw new Error(detail || errorData.message || `Error del servidor: ${response.status}`);
     }
 
     return await response.json();
@@ -658,6 +659,36 @@ export const getInspectionStats = async () => {
   } catch (error) {
     console.error("Error en getInspectionStats:", error);
     return { Aprobado: 0, Observacion: 0, Rechazado: 0, Incompleta: 0, 'Aprobado Observacion': 0, 'Rechazado Observacion': 0 };
+  }
+};
+
+export const getQualityStats = async ({ suppliers_id, type_inputs_id, fechaInicio, fechaFin } = {}) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No hay una sesión activa.');
+
+    const params = new URLSearchParams();
+    if (suppliers_id) params.append('suppliers_id', suppliers_id);
+    if (type_inputs_id) params.append('type_inputs_id', type_inputs_id);
+    if (fechaInicio) params.append('fechaInicio', fechaInicio);
+    if (fechaFin) params.append('fechaFin', fechaFin);
+
+    const queryString = params.toString();
+    const url = `${API_URL}/inspection-stats/quality-stats${queryString ? `?${queryString}` : ''}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) throw new Error('Error al obtener estadísticas de calidad');
+    const data = await response.json();
+    return data.data || { Aprobado: 0, Observacion: 0, Rechazado: 0, Incompleta: 0 };
+  } catch (error) {
+    console.error("Error en getQualityStats:", error);
+    return { Aprobado: 0, Observacion: 0, Rechazado: 0, Incompleta: 0 };
   }
 };
 

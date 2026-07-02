@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { getInsumos, registerInsumo, updateInsumo, getInsumosByType, getBills, getBillInputsByBillId, getInspectionResults, updateInspection, getTypeInputs, createTypeInput, updateTypeInput, deleteTypeInput, setTypesList } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
+import NumericInput from '../components/NumericInput';
+import TextInput from '../components/TextInput';
+import CustomSelect from '../components/CustomSelect';
 
 const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotifications }) => {
   const [formData, setFormData] = useState({
@@ -339,15 +342,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
   };
 
   const handleChange = (e) => {
-    let { name, value } = e.target;
-
-    // Validación técnica: Solo números para medidas, pero permitir texto en Referencia y Tipo
-    if (name !== 'reference' && name !== 'tipo') {
-      value = value.replace(/[^0-9.]/g, ''); // Elimina todo lo que no sea número o punto
-      const parts = value.split('.');
-      if (parts.length > 2) value = parts[0] + '.' + parts.slice(1).join(''); // Evita múltiples puntos
-    }
-
+    const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -418,15 +413,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
   };
 
   const handleEditChange = (e) => {
-    let { name, value } = e.target;
-
-    // Validación técnica: Solo números para medidas, pero permitir texto en Referencia y Tipo
-    if (name !== 'reference' && name !== 'tipo') {
-      value = value.replace(/[^0-9.]/g, '');
-      const parts = value.split('.');
-      if (parts.length > 2) value = parts[0] + '.' + parts.slice(1).join('');
-    }
-
+    const { name, value } = e.target;
     setEditFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -639,14 +626,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
             <div className="form-grid">
               <div className="form-field" style={{ gridColumn: 'span 2' }}>
                 <label>Tipo de Insumo</label>
-                <select name="tipo" value={formData.tipo} onChange={handleChange} required className="field-input">
-                  <option value="" disabled>Seleccione un tipo...</option>
-                  {typeInputsList.map(type => (
-                    <option key={type.id} value={type.id}>
-                      {typeNamesSpanish[type.name] || type.name}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect name="tipo" value={formData.tipo} onChange={handleChange} options={typeInputsList.map(type => ({ value: type.id, label: typeNamesSpanish[type.name] || type.name }))} placeholder="Seleccione un tipo..." required />
               </div>
             </div>
 
@@ -668,18 +648,17 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                     <tbody>
                       <tr>
                         <td>
-                          <input type="text" name="reference" className="field-input" value={formData.reference} onChange={handleChange} placeholder="Ingrese código..." required />
+                          <TextInput type="text" name="reference" className="field-input" value={formData.reference} onChange={handleChange} placeholder="Ingrese código..." sanitize="quotes" required />
                         </td>
                         {getRegisterSpecsByTypeId(parseInt(formData.tipo, 10)).map(key => (
                           <td key={key}>
-                            <input 
-                              type="text" 
+                            <NumericInput 
                               name={key} 
                               className="field-input" 
-                              inputMode="decimal"
                               value={formData[key]} 
                               onChange={handleChange} 
                               placeholder="---" 
+                              maxDecimals={4}
                               required 
                             />
                           </td>
@@ -709,13 +688,14 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
             <div className="form-grid">
               <div className="form-field">
                 <label>Nombre del Tipo de Insumo</label>
-                <input 
-                  type="text" 
+                <TextInput
+                  type="text"
                   className="field-input"
-                  value={newTypeName} 
-                  onChange={(e) => setNewTypeName(e.target.value)} 
-                  placeholder="Ingrese el nombre del tipo..." 
-                  required 
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  placeholder="Ingrese el nombre del tipo..."
+                  sanitize="quotes"
+                  required
                 />
               </div>
             </div>
@@ -743,13 +723,14 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                       <tr key={type.id}>
                         <td style={{ fontWeight: '600' }}>
                           {isEditing ? (
-                            <input 
-                              type="text" 
-                              className="field-input" 
-                              value={editedTypeName} 
-                              onClick={(e) => e.stopPropagation()} 
-                              onChange={(e) => setEditedTypeName(e.target.value)} 
-                              autoFocus 
+                            <TextInput
+                              type="text"
+                              className="field-input"
+                              value={editedTypeName}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setEditedTypeName(e.target.value)}
+                              sanitize="quotes"
+                              autoFocus
                             />
                           ) : (type.name)}
                         </td>
@@ -787,18 +768,12 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
           <div className="form-grid" style={{ marginBottom: '2rem' }}>
             <div className="form-field" style={{ gridColumn: 'span 2' }}>
               <label>Seleccione el Tipo de Insumo para buscar en su tabla técnica</label>
-              <select 
-                value={selectedEditType} 
-                onChange={(e) => handleTypeSelectForEdit(e.target.value)} 
-                className="field-input"
-              >
-                <option value="">Seleccione un tipo...</option>
-                {typeInputsList.map(type => (
-                  <option key={type.id} value={type.id}>
-                    {typeNamesSpanish[type.name] || type.name}
-                  </option>
-                ))}
-              </select>
+              <CustomSelect
+                value={selectedEditType}
+                onChange={(e) => handleTypeSelectForEdit(e.target.value)}
+                options={typeInputsList.map(type => ({ value: type.id, label: typeNamesSpanish[type.name] || type.name }))}
+                placeholder="Seleccione un tipo..."
+              />
             </div>
           </div>
 
@@ -808,12 +783,13 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
             <div className="table-filters">
               <div className="table-search-wrapper">
                 <span className="material-symbols-outlined">search</span>
-                <input 
-                  type="text" 
-                  className="table-search-input" 
-                  placeholder="Buscar por referencia o tipo..." 
+                <TextInput
+                  type="text"
+                  className="table-search-input"
+                  placeholder="Buscar por referencia o tipo..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  sanitize="quotes"
                 />
               </div>
             </div>
@@ -874,7 +850,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
               <div className="form-grid">
                 <div className="form-field">
                   <label>Tipo de Insumo (No editable)</label>
-                  <input type="text" value={typeNamesSpanish[editFormData.tipo] || editFormData.tipo} readOnly style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed' }} />
+                  <TextInput type="text" value={typeNamesSpanish[editFormData.tipo] || editFormData.tipo} readOnly style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed' }} />
                 </div>
               </div>
 
@@ -895,18 +871,16 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                     <tbody>
                       <tr>
                         <td>
-                          <input type="text" name="reference" className="field-input" value={editFormData.reference || editFormData.referencia} readOnly style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed' }} required />
+                          <TextInput type="text" name="reference" className="field-input" value={editFormData.reference || editFormData.referencia} readOnly style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed' }} required />
                         </td>
                         {getSpecsByTypeId(editFormData.type_inputs_id).map(key => (
                           <td key={key}>
-                            <input 
-                              type="text" 
+                            <NumericInput 
                               name={key} 
                               className="field-input" 
-                              inputMode="decimal"
-                              step="0.01" 
                               value={editFormData[key] || ''} 
                               onChange={handleEditChange} 
+                              maxDecimals={4}
                               required 
                             />
                           </td>
@@ -937,19 +911,11 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
           <div className="form-grid" style={{ marginBottom: '2rem' }}>
             <div className="form-field">
               <label>Seleccionar Factura</label>
-              <select name="invoiceId" className="field-input" value={validationView.invoiceId} onChange={handleValidationViewChange}>
-                <option value="" disabled>Seleccione factura para validar...</option>
-                {invoices.map(inv => <option key={inv.id} value={inv.id}>{inv.bill_nro}</option>)}
-              </select>
+              <CustomSelect name="invoiceId" value={validationView.invoiceId} onChange={handleValidationViewChange} options={invoices.map(inv => ({ value: inv.id, label: inv.bill_nro }))} placeholder="Seleccione factura para validar..." />
             </div>
             <div className="form-field">
               <label>Seleccionar Referencia con Alerta</label>
-              <select name="insumoIndex" className="field-input" value={validationView.insumoIndex} onChange={handleValidationViewChange} disabled={!validationView.invoiceId}>
-                <option value="" disabled>Seleccione ítem en observación...</option>
-                {selectedInvoiceItems.map((ins, idx) => (
-                  <option key={ins.id} value={idx}>{ins.reference}</option>
-                ))}
-              </select>
+              <CustomSelect name="insumoIndex" value={validationView.insumoIndex} onChange={handleValidationViewChange} options={selectedInvoiceItems.map((ins, idx) => ({ value: idx, label: ins.reference }))} placeholder="Seleccione ítem en observación..." disabled={!validationView.invoiceId} />
             </div>
           </div>
 
@@ -1027,12 +993,12 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                         ) : (
                           status.text === 'Observación' ? (
                             <div style={{ display: 'flex', gap: '0.5rem', flex: '1' }}>
-                              <input 
-                                type="text" 
-                                className="field-input" 
-                                style={{ flex: '1', backgroundColor: '#f8fafc' }} 
-                                value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')} 
-                                readOnly 
+                              <TextInput
+                                type="text"
+                                className="field-input"
+                                style={{ flex: '1', backgroundColor: '#f8fafc' }}
+                                value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')}
+                                readOnly
                               />
                               <div className="boolean-toggle-group" style={{ display: 'flex', gap: '0.5rem' }}>
                                 <button 
@@ -1052,12 +1018,12 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                               </div>
                             </div>
                           ) : (
-                            <input 
-                              type="text" 
-                              className="field-input" 
-                              style={{ flex: '1', backgroundColor: '#f8fafc' }} 
-                              value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')} 
-                              readOnly 
+                            <TextInput
+                              type="text"
+                              className="field-input"
+                              style={{ flex: '1', backgroundColor: '#f8fafc' }}
+                              value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')}
+                              readOnly
                             />
                           )
                         )}

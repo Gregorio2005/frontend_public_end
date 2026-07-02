@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { resetPassword } from '../services/authService';
 import Logo from '../components/Logo';
+import TextInput from '../components/TextInput';
 import './LoginPage.css'; // Reutilizamos los estilos industriales del login
 
 const ResetPasswordPage = () => {
@@ -81,12 +82,13 @@ const ResetPasswordPage = () => {
             <div className="field-group">
               <label className="field-label">Nueva Contraseña</label>
               <div className="password-wrapper">
-                <input
+                <TextInput
                   type={showPassword ? 'text' : 'password'}
                   className="field-input field-input--password"
                   placeholder="Mínimo 6 caracteres"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  sanitize="quotes"
                   required
                   disabled={!token || loading}
                 />
@@ -107,12 +109,13 @@ const ResetPasswordPage = () => {
             <div className="field-group">
               <label className="field-label">Confirmar Contraseña</label>
               <div className="password-wrapper">
-                <input
+                <TextInput
                   type={showConfirmPassword ? 'text' : 'password'}
                   className="field-input field-input--password"
                   placeholder="Repita su nueva clave"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
+                  sanitize="quotes"
                   required
                   disabled={!token || loading}
                 />

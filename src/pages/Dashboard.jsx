@@ -4,6 +4,7 @@ import Logo from '../components/Logo';
 import ConfirmModal from '../components/ConfirmModal';
 import NotificationBell from '../components/NotificationBell';
 import Avatar from '../components/Avatar';
+import TextInput from '../components/TextInput';
 import logoImg from '../assets/logo.jpeg';
 import './Dashboard.css';
 
@@ -420,13 +421,14 @@ const Dashboard = ({ user = {}, onLogout }) => {
                 <div className="form-field" style={{ marginBottom: '1.5rem' }}>
                   <label>Contraseña Actual</label>
                   <div style={{ position: 'relative' }}>
-                    <input
+                    <TextInput
                       type={showPass.current ? "text" : "password"}
                       name="currentPassword"
                       className="field-input"
                       value={passwordForm.currentPassword}
                       onChange={handlePasswordInputChange}
                       placeholder="Ingrese su clave actual"
+                      sanitize="quotes"
                       required
                     />
                     <button type="button" onClick={() => toggleVisibility('current')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>
@@ -439,13 +441,14 @@ const Dashboard = ({ user = {}, onLogout }) => {
                   <div className="form-field">
                     <label>Nueva Contraseña</label>
                     <div style={{ position: 'relative' }}>
-                      <input
+                      <TextInput
                         type={showPass.new ? "text" : "password"}
                         name="newPassword"
                         className="field-input"
                         value={passwordForm.newPassword}
                         onChange={handlePasswordInputChange}
                         placeholder="Mínimo 8 caracteres"
+                        sanitize="quotes"
                         required
                       />
                       <button type="button" onClick={() => toggleVisibility('new')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>
@@ -456,13 +459,14 @@ const Dashboard = ({ user = {}, onLogout }) => {
                   <div className="form-field">
                     <label>Confirmar Nueva Contraseña</label>
                     <div style={{ position: 'relative' }}>
-                      <input
+                      <TextInput
                         type={showPass.confirm ? "text" : "password"}
                         name="confirmPassword"
                         className="field-input"
                         value={passwordForm.confirmPassword}
                         onChange={handlePasswordInputChange}
                         placeholder="Repita su nueva clave"
+                        sanitize="quotes"
                         required
                       />
                       <button type="button" onClick={() => toggleVisibility('confirm')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex' }}>

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { getSuppliers, registerSupplier, assignMasterInput, getInsumosByType, getInsumos, deleteMasterInput, getMasterInputsBySupplier, updateSupplier, updateMasterInputStatus, getTypeInputs, setTypesList } from '../services/authService';
+import { getSuppliers, registerSupplier, assignMasterInput, getInsumosByType, getInsumos, deleteMasterInput, getMasterInputsBySupplier, updateSupplier, updateMasterInputStatus, getTypeInputs, setTypesList, getQualityStats } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
+import TextInput from '../components/TextInput';
+import CustomSelect from '../components/CustomSelect';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications }) => {
   const [formData, setFormData] = useState({
@@ -81,50 +84,26 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
     'Collars': 'Collares'
   };
 
-  // Mapeo de IDs técnicos para la base de datos (Requerimiento DB)
-  // Traduce el nombre interno a su respectivo ID entero
-  const typeIdMapping = {
-    'Stuffing': 1,
-    'Stamps': 2,
-    'Oring': 3,
-    'Chemicals': 4,
-    'Bags': 5,
-    'Cardboard': 6,
-    'Cases': 7,
-    'Thermoplastics': 8,
-    'Packings': 9,
-    'Collars': 10
-  };
-
-  // Carga de proveedores desde la API al entrar en modo lista
+  // Carga de proveedores y tipos de insumo desde la API
   useEffect(() => {
-    const fetchSuppliers = async () => {
-      // Cargamos proveedores siempre que estemos en la pestaña de proveedores, sin importar la sub-vista
-      if (activeAction === 'proveedores') {
+    if (activeAction === 'proveedores' || activeAction === 'charts') {
+      const fetchData = async () => {
         setLoading(true);
         try {
-          const data = await getSuppliers();
-          setProviders(data.sort((a, b) => (a.name || a.nombre).localeCompare(b.name || b.nombre))); // Ordenar proveedores alfabéticamente
-          // No cargamos todos los master inputs aquí, se cargarán al seleccionar un proveedor
+          const [suppliersData, typesData] = await Promise.all([
+            getSuppliers(),
+            getTypeInputs()
+          ]);
+          setProviders(suppliersData.sort((a, b) => (a.name || a.nombre).localeCompare(b.name || b.nombre)));
+          setTypeInputsList(typesData);
+          setTypesList(typesData);
         } catch (error) {
-          console.error("Error al cargar proveedores:", error);
+          console.error("Error al cargar datos:", error);
         } finally {
           setLoading(false);
         }
-      }
-    };
-    fetchSuppliers();
-  }, [activeAction, subView]);
-
-  // Cargar tipos de insumo desde el backend
-  useEffect(() => {
-    if (activeAction === 'proveedores') {
-      getTypeInputs()
-        .then(data => {
-          setTypeInputsList(data);
-          setTypesList(data);
-        })
-        .catch(error => console.error("Error al cargar tipos de insumo:", error));
+      };
+      fetchData();
     }
   }, [activeAction]);
 
@@ -291,18 +270,29 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
     setShowChart(false); // Ocultar gráfico anterior si cambian filtros
   };
 
-  const handleGenerateChart = (e) => {
+  const handleGenerateChart = async (e) => {
     e.preventDefault();
     setLoading(true);
-    // Simulación de carga y generación de datos aleatorios
-    setTimeout(() => {
-      setChartData({
-        aprobados: Math.floor(Math.random() * 100) + 20,
-        rechazados: Math.floor(Math.random() * 30) + 5
+    try {
+      const stats = await getQualityStats({
+        suppliers_id: chartFilters.proveedorId || undefined,
+        type_inputs_id: chartFilters.insumo || undefined,
+        fechaInicio: chartFilters.fechaInicio || undefined,
+        fechaFin: chartFilters.fechaFin || undefined
       });
+      const chartArray = [
+        { name: 'Aprobados', cantidad: stats.Aprobado || 0, fill: '#10b981' },
+        { name: 'Observación', cantidad: stats.Observacion || 0, fill: '#f59e0b' },
+        { name: 'Rechazados', cantidad: stats.Rechazado || 0, fill: '#ef4444' },
+        { name: 'Incompleta', cantidad: stats.Incompleta || 0, fill: '#6b7280' }
+      ];
+      setChartData(chartArray);
       setShowChart(true);
+    } catch (error) {
+      showNotification(`Error al generar gráfico: ${error.message}`, 'error');
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   const handleDeleteAssignment = async (masterInputId) => {
@@ -484,7 +474,7 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
                   <div className="table-filters">
                     <div className="table-search-wrapper">
                       <span className="material-symbols-outlined">search</span>
-                      <input type="text" className="table-search-input" placeholder="Buscar por nombre o ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                      <TextInput type="text" className="table-search-input" placeholder="Buscar por nombre o ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sanitize="quotes" />
                     </div>
                   </div>
                   <table className="industrial-table">
@@ -501,7 +491,7 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
                           <tr key={p.id} onClick={() => setSelectedProvider(p)} style={{ cursor: 'pointer' }}>
                             <td style={{ fontWeight: '600' }}>
                               {isEditing ? (
-                                <input type="text" className="field-input" value={editedProviderName} onClick={(e) => e.stopPropagation()} onChange={(e) => setEditedProviderName(e.target.value)} autoFocus />
+                                <TextInput type="text" className="field-input" value={editedProviderName} onClick={(e) => e.stopPropagation()} onChange={(e) => setEditedProviderName(e.target.value)} sanitize="quotesNoSpaces" autoFocus />
                               ) : (p.name || p.nombre)}
                             </td>
                             <td style={{ textAlign: 'center' }}>
@@ -600,14 +590,15 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
                 <div className="form-grid">
                   <div className="form-field">
                     <label>Nombre del Proveedor</label>
-                    <input 
-                      type="text" 
-                      name="name" 
+                    <TextInput
+                      type="text"
+                      name="name"
                       className="field-input"
-                      value={formData.name} 
-                      onChange={handleChange} 
-                      placeholder="Ingrese el nombre comercial" 
-                      required 
+                      value={formData.name}
+                      onChange={handleChange}
+                      placeholder="Ingrese el nombre comercial"
+                      sanitize="quotesNoSpaces"
+                      required
                     />
                   </div>
                 </div>
@@ -625,39 +616,27 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
                 <div className="form-grid">
                   <div className="form-field">
                     <label>Seleccionar Proveedor</label>
-                    <select 
-                      name="suppliers_id" 
-                      className="field-input" 
-                      value={assignData.suppliers_id} 
-                      onChange={handleAssignChange} 
+                    <CustomSelect
+                      name="suppliers_id"
+                      value={assignData.suppliers_id}
+                      onChange={handleAssignChange}
+                      options={providers.map(p => ({ value: p.id, label: p.name || p.nombre }))}
+                      placeholder="Seleccione un proveedor de la base de datos..."
                       required
-                    >
-                      <option value="" disabled>Seleccione un proveedor de la base de datos...</option>
-                      {providers.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name || p.nombre}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
 
                   {assignData.suppliers_id && (
                     <div className="form-field">
                       <label>Seleccionar el tipo de Insumo</label>
-                      <select 
-                        name="type_inputs_id" 
-                        className="field-input" 
-                        value={assignData.type_inputs_id} 
-                        onChange={handleAssignChange} 
-                        required 
-                      >
-                        <option value="">Seleccione el tipo...</option>
-                        {typeInputsList.map(type => (
-                          <option key={type.id} value={type.name}>
-                            {typeNamesSpanish[type.name] || type.name}
-                          </option>
-                        ))}
-                      </select>
+                      <CustomSelect
+                        name="type_inputs_id"
+                        value={assignData.type_inputs_id}
+                        onChange={handleAssignChange}
+                        options={typeInputsList.map(type => ({ value: type.name, label: typeNamesSpanish[type.name] || type.name }))}
+                        placeholder="Seleccione el tipo..."
+                        required
+                      />
                     </div>
                   )}
                 </div>
@@ -684,18 +663,14 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
                           {assignData.assignments.map((item, index) => (
                             <tr key={index}>
                               <td>
-                                <select 
-                                  name="inputs_id" 
-                                  className="field-input" 
-                                  value={item.inputs_id} 
-                                  onChange={(e) => handleItemChange(index, e)} 
+                                <CustomSelect
+                                  name="inputs_id"
+                                  value={item.inputs_id}
+                                  onChange={(e) => handleItemChange(index, e)}
+                                  options={inputsByType.map(ins => ({ value: ins.id, label: ins.reference || ins.referencia }))}
+                                  placeholder="Seleccione referencia..."
                                   required
-                                >
-                                  <option value="">Seleccione referencia...</option>
-                                  {inputsByType.map(ins => (
-                                    <option key={ins.id} value={ins.id}>{ins.reference || ins.referencia}</option>
-                                  ))}
-                                </select>
+                                />
                               </td>
                               <td className="text-center">
                                 <button 
@@ -738,31 +713,19 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
             <div className="form-grid">
               <div className="form-field">
                 <label>Proveedor</label>
-                <select name="proveedorId" className="field-input" value={chartFilters.proveedorId} onChange={handleChartFilterChange} required>
-                  <option value="" disabled>Seleccione un proveedor...</option>
-                  {providers.map(p => (
-                    <option key={p.id} value={p.id}>{p.name || p.nombre}</option>
-                  ))}
-                </select>
+                <CustomSelect name="proveedorId" value={chartFilters.proveedorId} onChange={handleChartFilterChange} options={providers.map(p => ({ value: p.id, label: p.name || p.nombre }))} placeholder="Seleccione un proveedor..." required />
               </div>
               <div className="form-field">
                 <label>Tipo de Insumo</label>
-                <select name="insumo" className="field-input" value={chartFilters.insumo} onChange={handleChartFilterChange} required>
-                  <option value="" disabled>Seleccione tipo...</option>
-                  {typeInputsList.map(type => (
-                    <option key={type.id} value={type.name}>
-                      {typeNamesSpanish[type.name] || type.name}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect name="insumo" value={chartFilters.insumo} onChange={handleChartFilterChange} options={typeInputsList.map(type => ({ value: type.id, label: typeNamesSpanish[type.name] || type.name }))} placeholder="Seleccione tipo..." required />
               </div>
               <div className="form-field">
                 <label>Fecha Inicio</label>
-                <input type="date" name="fechaInicio" className="field-input" value={chartFilters.fechaInicio} onChange={handleChartFilterChange} required />
+                <TextInput type="date" name="fechaInicio" className="field-input" value={chartFilters.fechaInicio} onChange={handleChartFilterChange} required />
               </div>
               <div className="form-field">
                 <label>Fecha Fin</label>
-                <input type="date" name="fechaFin" className="field-input" value={chartFilters.fechaFin} onChange={handleChartFilterChange} required />
+                <TextInput type="date" name="fechaFin" className="field-input" value={chartFilters.fechaFin} onChange={handleChartFilterChange} required />
               </div>
             </div>
             <div className="form-actions">
@@ -782,49 +745,37 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
                 <h3>Análisis de Calidad: Tasa de Aprobación vs Rechazo</h3>
               </div>
 
-              <div className="stats-display" style={{ padding: '2rem 1rem', height: 'auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'flex-end', height: '220px', gap: '3rem', borderBottom: '2px solid var(--outline-variant)', paddingBottom: '1rem' }}>
-                  {/* Barra Aprobados */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-                    <div className="chart-bar approval" style={{ 
-                      width: '80px', 
-                      height: `${(chartData.aprobados / (chartData.aprobados + chartData.rechazados)) * 200}px`, 
-                      backgroundColor: '#10b981', 
-                      borderRadius: '8px 8px 0 0',
-                      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)',
-                      transition: 'height 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
-                    }}></div>
-                    <span style={{ marginTop: '1rem', fontWeight: '700', color: 'var(--on-surface)', fontSize: '0.9rem' }}>Aprobados</span>
-                    <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#10b981' }}>{chartData.aprobados}</span>
-                  </div>
+              <div style={{ padding: '1rem', width: '100%', height: 350 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--outline-variant)" />
+                    <XAxis dataKey="name" tick={{ fontSize: 13, fontWeight: 600 }} />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '8px', border: '1px solid var(--outline-variant)', fontSize: '0.9rem' }}
+                      formatter={(value) => [`${value} inspecciones`, 'Cantidad']}
+                    />
+                    <Legend />
+                    <Bar dataKey="cantidad" name="Inspecciones" radius={[6, 6, 0, 0]}>
+                      {chartData.map((entry, index) => (
+                        <rect key={`bar-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
 
-                  {/* Barra Rechazados */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-                    <div className="chart-bar rejection" style={{ 
-                      width: '80px', 
-                      height: `${(chartData.rechazados / (chartData.aprobados + chartData.rechazados)) * 200}px`, 
-                      backgroundColor: '#ef4444', 
-                      borderRadius: '8px 8px 0 0',
-                      boxShadow: '0 4px 12px rgba(239, 68, 68, 0.2)',
-                      transition: 'height 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
-                    }}></div>
-                    <span style={{ marginTop: '1rem', fontWeight: '700', color: 'var(--on-surface)', fontSize: '0.9rem' }}>Rechazados</span>
-                    <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#ef4444' }}>{chartData.rechazados}</span>
-                  </div>
-                </div>
-
-                <div className="chart-footer-info" style={{ textAlign: 'center', backgroundColor: 'var(--surface-variant)', padding: '1.5rem', borderRadius: '12px' }}>
-                  <p style={{ margin: '0 0 8px 0', fontSize: '0.95rem' }}>
-                    Insumo: <strong style={{ color: 'var(--primary)' }}>{typeNamesSpanish[chartFilters.insumo] || 'General'}</strong>
-                  </p>
-                  <p style={{ margin: '0 0 8px 0', fontSize: '0.95rem' }}>
-                    Proveedor: <strong>{providers.find(p => p.id === parseInt(chartFilters.proveedorId))?.name || providers.find(p => p.id === parseInt(chartFilters.proveedorId))?.nombre || 'No especificado'}</strong>
-                  </p>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--secondary)', fontWeight: '500' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '5px' }}>calendar_today</span>
-                    Período: {chartFilters.fechaInicio} al {chartFilters.fechaFin}
-                  </p>
-                </div>
+              <div className="chart-footer-info" style={{ textAlign: 'center', backgroundColor: 'var(--surface-variant)', padding: '1.5rem', borderRadius: '12px', margin: '1rem' }}>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.95rem' }}>
+                  Insumo: <strong style={{ color: 'var(--primary)' }}>{typeNamesSpanish[typeInputsList.find(t => String(t.id) === String(chartFilters.insumo))?.name] || typeInputsList.find(t => String(t.id) === String(chartFilters.insumo))?.name || 'General'}</strong>
+                </p>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.95rem' }}>
+                  Proveedor: <strong>{providers.find(p => p.id === parseInt(chartFilters.proveedorId))?.name || providers.find(p => p.id === parseInt(chartFilters.proveedorId))?.nombre || 'No especificado'}</strong>
+                </p>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--secondary)', fontWeight: '500' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '5px' }}>calendar_today</span>
+                  Período: {chartFilters.fechaInicio} al {chartFilters.fechaFin}
+                </p>
               </div>
             </section>
           )}

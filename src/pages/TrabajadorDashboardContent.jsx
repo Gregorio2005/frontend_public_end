@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { getSuppliers, getMasterInputsBySupplier, registerBill, registerBillInput, getBills, getBillInputsByBillId, registerInspection, getTypeInputs } from '../services/authService';
+import ConfirmModal from '../components/ConfirmModal';
+import NumericInput from '../components/NumericInput';
+import TextInput from '../components/TextInput';
+import CustomSelect from '../components/CustomSelect';
 
 const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }) => {
   const [formData, setFormData] = useState({
@@ -10,7 +14,7 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
     numero_recepcion: '',
     fecha_recepcion: '',
     proveedor_id: '',
-    insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1, percentage: 1 }]
+    insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: '' }]
   });
 
   // Estado para la inspección
@@ -38,6 +42,9 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
 
   // Estado para notificaciones personalizadas (Toast)
   const [notification, setNotification] = useState({ message: '', type: 'success', visible: false });
+
+  // Estado para modal de rechazo (inspección 100%)
+  const [showRejectionModal, setShowRejectionModal] = useState(false);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type, visible: true });
@@ -135,6 +142,26 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
   // Lista de tipos que requieren evaluación de medidas técnicas (Diámetros y Altura)
   const measurementTypes = ['Estoperas', 'Sellos', 'O-Rings', 'Químicos', 'Bolsas', 'Cartón', 'Estuches', 'Termoplásticos', 'Empaquetaduras', 'Collares'];
 
+  // Tabla de muestreo según cantidad entrante
+  const getSamplingQuantity = (cantidad) => {
+    const qty = parseFloat(cantidad) || 0;
+    if (qty <= 5) return qty;
+    if (qty <= 50) return 6;
+    if (qty <= 500) return 7;
+    if (qty <= 750) return 16;
+    if (qty <= 1500) return 27;
+    if (qty <= 5000) return 36;
+    return 42;
+  };
+
+  // Limites de fecha para facturación
+  const currentYear = new Date().getFullYear();
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const facturaMinDate = `${currentYear - 1}-01-01`;
+  const facturaMaxDate = `${currentYear + 1}-12-31`;
+  const recepcionMinDate = today;
+  const recepcionMaxDate = `${currentYear + 1}-12-31`;
+
   // Carga inicial de datos según la pestaña activa
   useEffect(() => {
     if (activeAction === 'add_factura') {
@@ -156,7 +183,7 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
     setFormData(prev => ({ 
       ...prev, 
       proveedor_id: supplierId,
-      insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1, percentage: 1 }]
+      insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: '' }]
     }));
     
     if (supplierId) {
@@ -229,11 +256,9 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
 
     newInsumos[index] = { ...newInsumos[index], [name]: value };
 
-    // Auto-calcular quantity_inspection cuando cambia percentage o cantidad
-    if (name === 'percentage' || name === 'cantidad') {
-      const qty = parseFloat(name === 'cantidad' ? value : newInsumos[index].cantidad) || 0;
-      const pct = parseFloat(name === 'percentage' ? value : newInsumos[index].percentage) || 0;
-      newInsumos[index].quantity_inspection = Math.max(1, Math.ceil(qty * (pct / 100)));
+    // Auto-calcular quantity_inspection según tabla de muestreo cuando cambia cantidad
+    if (name === 'cantidad') {
+      newInsumos[index].quantity_inspection = getSamplingQuantity(newInsumos[index].cantidad);
     }
 
     setFormData(prev => ({ ...prev, insumos: newInsumos }));
@@ -242,7 +267,7 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
   const addInsumo = () => {
     setFormData(prev => ({
       ...prev,
-      insumos: [...prev.insumos, { type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1, percentage: 1 }]
+      insumos: [...prev.insumos, { type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: '' }]
     }));
   };
 
@@ -332,11 +357,43 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
       return;
     }
 
+    // Detectar si algún parámetro del paso actual está en "Rechazado"
+    const techKeys = selectedInsumo ? getSpecsByTypeId(selectedInsumo.type_inputs_id) : [];
+    const item = (inspectionData.details.items || {})[step] || {};
+    const hasRejection = techKeys.some(key => {
+      const status = getMeasurementStatus(item[key], selectedInsumo[key], key);
+      return status.text === 'Rechazado';
+    });
+
+    // Si hay rechazo y aún no estamos en inspección 100%, abrir modal
+    const currentQty = inspectionData.details.cantidad_recepcionar || 1;
+    const totalQty = Number(selectedInsumo?.quantity) || 0;
+    if (hasRejection && currentQty < totalQty) {
+      setShowRejectionModal(true);
+      return; // No avanzar aún, esperar aceptación del modal
+    }
+
     const maxSteps = Math.ceil(inspectionData.details.cantidad_recepcionar || 1);
     setInspectionData(prev => ({
       ...prev,
       details: { ...prev.details, currentStep: Math.min((prev.details.currentStep || 1) + 1, maxSteps) }
     }));
+  };
+
+  const handleAcceptRejection = () => {
+    const totalQty = Number(selectedInsumo?.quantity) || 0;
+    const step = inspectionData.details.currentStep || 1;
+
+    setInspectionData(prev => ({
+      ...prev,
+      details: {
+        ...prev.details,
+        cantidad_recepcionar: totalQty,
+        currentStep: step + 1,
+        rejectionMode: true
+      }
+    }));
+    setShowRejectionModal(false);
   };
 
   const handlePrevStep = (e) => {
@@ -371,16 +428,14 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
       // 2. Registramos cada insumo asociado (bill_inputs)
       const inputPromises = formData.insumos.map(item => {
         const qty = parseFloat(item.cantidad) || 0;
-        const pct = parseFloat(item.percentage) || 0;
-        const qtyInspection = Math.max(1, Math.ceil(qty * (pct / 100)));
+        const qtyInspection = getSamplingQuantity(qty);
         
         const inputPayload = {
           bill_data_id: billId,
           master_inputs_id: parseInt(item.master_inputs_id, 10),
           oem_number: item.oem,
           quantity: qty,
-          quantity_inspection: qtyInspection,
-          percentage: pct
+          quantity_inspection: qtyInspection
         };
         return registerBillInput(inputPayload);
       });
@@ -393,7 +448,7 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
       setFormData({
         numero_factura: '', fecha_factura: '', odoo: '',
         numero_expediente: '', numero_recepcion: '', fecha_recepcion: '', proveedor_id: '',
-        insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: 1, percentage: 1 }]
+        insumos: [{ type_inputs_id: '', master_inputs_id: '', oem: '', cantidad: '' }]
       });
     } catch (err) {
       showNotification(`Error al registrar la factura: ${err.message}`, "error");
@@ -404,6 +459,25 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
 
   const handleInspectionSubmit = async (e) => {
     e.preventDefault();
+
+    // Detectar rechazo en el paso actual antes de guardar
+    if (selectedInsumo) {
+      const step = inspectionData.details.currentStep || 1;
+      const techKeys = getSpecsByTypeId(selectedInsumo.type_inputs_id);
+      const item = (inspectionData.details.items || {})[step] || {};
+      const hasRejection = techKeys.some(key => {
+        const status = getMeasurementStatus(item[key], selectedInsumo[key], key);
+        return status.text === 'Rechazado';
+      });
+
+      const currentQty = inspectionData.details.cantidad_recepcionar || 1;
+      const totalQty = Number(selectedInsumo?.quantity) || 0;
+      if (hasRejection && currentQty < totalQty) {
+        setShowRejectionModal(true);
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -505,36 +579,31 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
             <div className="form-grid">
               <div className="form-field">
                 <label htmlFor="numero_factura">Número de Factura</label>
-                <input id="numero_factura" type="text" name="numero_factura" className="field-input" value={formData.numero_factura} onChange={handleChange} placeholder="Ej: FAC-0001" required />
+                <TextInput id="numero_factura" type="text" name="numero_factura" className="field-input" value={formData.numero_factura} onChange={handleChange} placeholder="Ej: FAC-0001" sanitize="quotes" required />
               </div>
               <div className="form-field">
                 <label htmlFor="fecha_factura">Fecha de Factura</label>
-                <input id="fecha_factura" type="date" name="fecha_factura" className="field-input" value={formData.fecha_factura} onChange={handleChange} required />
+                <TextInput id="fecha_factura" type="date" name="fecha_factura" className="field-input" value={formData.fecha_factura} onChange={handleChange} min={facturaMinDate} max={facturaMaxDate} required />
               </div>
               <div className="form-field">
                 <label htmlFor="odoo">Código Odoo</label>
-                <input id="odoo" type="text" name="odoo" className="field-input" value={formData.odoo} onChange={handleChange} placeholder="Código de texto" required />
+                <TextInput id="odoo" type="text" name="odoo" className="field-input" value={formData.odoo} onChange={handleChange} placeholder="Código de texto" sanitize="quotes" required />
               </div>
               <div className="form-field">
                 <label htmlFor="numero_expediente">Número de Expediente</label>
-                <input id="numero_expediente" type="text" name="numero_expediente" className="field-input" value={formData.numero_expediente} onChange={handleChange} placeholder="Código de expediente" required />
+                <TextInput id="numero_expediente" type="text" name="numero_expediente" className="field-input" value={formData.numero_expediente} onChange={handleChange} placeholder="Código de expediente" sanitize="quotes" required />
               </div>
               <div className="form-field">
                 <label htmlFor="numero_recepcion">Número de Recepción</label>
-                <input id="numero_recepcion" type="text" name="numero_recepcion" className="field-input" value={formData.numero_recepcion} onChange={handleChange} placeholder="Código de recepción" required />
+                <TextInput id="numero_recepcion" type="text" name="numero_recepcion" className="field-input" value={formData.numero_recepcion} onChange={handleChange} placeholder="Código de recepción" sanitize="quotes" required />
               </div>
               <div className="form-field">
                 <label htmlFor="fecha_recepcion">Fecha de Recepción</label>
-                <input id="fecha_recepcion" type="date" name="fecha_recepcion" className="field-input" value={formData.fecha_recepcion} onChange={handleChange} required />
+                <TextInput id="fecha_recepcion" type="date" name="fecha_recepcion" className="field-input" value={formData.fecha_recepcion} onChange={handleChange} min={recepcionMinDate} max={recepcionMaxDate} required />
               </div>
               <div className="form-field">
                 <label htmlFor="proveedor_id">Proveedor</label>
-                <select id="proveedor_id" name="proveedor_id" className="field-input" value={formData.proveedor_id} onChange={handleChange} required disabled={loading}>
-                  <option value="" disabled>{loading ? 'Cargando...' : 'Seleccione un proveedor'}</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>{s.name || s.nombre}</option>
-                  ))}
-                </select>
+                <CustomSelect id="proveedor_id" name="proveedor_id" value={formData.proveedor_id} onChange={handleChange} options={suppliers.map(s => ({ value: s.id, label: s.name || s.nombre }))} placeholder={loading ? 'Cargando...' : 'Seleccione un proveedor'} required disabled={loading} />
               </div>
             </div>
 
@@ -553,11 +622,10 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
                 <table className="industrial-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '25%' }}>Tipo de Insumo</th>
-                      <th style={{ width: '30%' }}>Referencia (Código Interno)</th>
-                      <th>Número OEM</th>
+                      <th style={{ width: '22%' }}>Tipo de Insumo</th>
+                      <th style={{ width: '22%' }}>Referencia</th>
+                      <th style={{ width: '30%' }}>Número OEM</th>
                       <th>Cantidad</th>
-                      <th>% Inspección</th>
                       <th>Cant. Inspeccionar</th>
                       <th className="text-center">Acción</th>
                     </tr>
@@ -573,32 +641,19 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
                       return (
                         <tr key={index}>
                           <td>
-                            <select name="type_inputs_id" className="field-input" value={insumo.type_inputs_id} onChange={(e) => handleInsumoChange(index, e)} required disabled={!formData.proveedor_id}>
-                              <option value="" disabled>Seleccione tipo...</option>
-                              {availableTypesIds.map(typeId => (
-                                <option key={typeId} value={typeId}>{dynamicIdToSpanishType[typeId]}</option>
-                              ))}
-                            </select>
+                            <CustomSelect name="type_inputs_id" value={insumo.type_inputs_id} onChange={(e) => handleInsumoChange(index, e)} options={availableTypesIds.map(typeId => ({ value: typeId, label: dynamicIdToSpanishType[typeId] }))} placeholder="Seleccione tipo..." required disabled={!formData.proveedor_id} />
                           </td>
                           <td>
-                            <select name="master_inputs_id" className="field-input" value={insumo.master_inputs_id} onChange={(e) => handleInsumoChange(index, e)} required disabled={!insumo.type_inputs_id}>
-                              <option value="" disabled>Seleccione referencia...</option>
-                              {filteredRefs.map(item => (
-                                <option key={item.id} value={item.id}>{item.reference}</option>
-                              ))}
-                            </select>
+                            <CustomSelect name="master_inputs_id" value={insumo.master_inputs_id} onChange={(e) => handleInsumoChange(index, e)} options={filteredRefs.map(item => ({ value: item.id, label: item.reference }))} placeholder="Seleccione referencia..." required disabled={!insumo.type_inputs_id} />
                           </td>
                           <td>
-                            <input type="text" name="oem" className="field-input" value={insumo.oem} onChange={(e) => handleInsumoChange(index, e)} placeholder="Código OEM" required />
+                            <TextInput type="text" name="oem" className="field-input" value={insumo.oem} onChange={(e) => handleInsumoChange(index, e)} placeholder="Código OEM" sanitize="quotes" required />
                           </td>
                           <td>
-                            <input type="number" name="cantidad" className="field-input" value={insumo.cantidad} onChange={(e) => handleInsumoChange(index, e)} min="0.01" step="0.01" required />
+                            <NumericInput name="cantidad" className="field-input" value={insumo.cantidad} onChange={(e) => handleInsumoChange(index, e)} placeholder="0.00" maxDecimals={2} required />
                           </td>
                           <td>
-                            <input type="number" name="percentage" className="field-input" value={insumo.percentage} onChange={(e) => handleInsumoChange(index, e)} min="1" max="100" step="0.01" required />
-                          </td>
-                          <td>
-                            <input type="number" className="field-input" value={insumo.quantity_inspection || 1} readOnly style={{ backgroundColor: '#f1f5f9' }} />
+                            <NumericInput className="field-input" value={insumo.quantity_inspection || 1} readOnly style={{ backgroundColor: '#f1f5f9' }} />
                           </td>
                           <td className="text-center">
                             <button type="button" className="btn-icon-cancel" onClick={() => removeInsumo(index)} title="Eliminar fila" disabled={formData.insumos.length === 1}>🗑️</button>
@@ -628,29 +683,12 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
             <div className="form-grid">
               <div className="form-field">
                 <label htmlFor="invoiceId">Seleccionar Factura</label>
-                <select id="invoiceId" name="invoiceId" className="field-input" value={inspectionData.invoiceId} onChange={handleInspectionChange} required disabled={loading}>
-                  <option value="" disabled>{loading ? 'Cargando facturas...' : 'Seleccione una factura...'}</option>
-                  {invoices.map(inv => (
-                    <option key={inv.id} value={inv.id}>{inv.bill_nro}</option>
-                  ))}
-                </select>
+                <CustomSelect id="invoiceId" name="invoiceId" value={inspectionData.invoiceId} onChange={handleInspectionChange} options={invoices.map(inv => ({ value: inv.id, label: inv.bill_nro }))} placeholder={loading ? 'Cargando facturas...' : 'Seleccione una factura...'} required disabled={loading} />
               </div>
 
               <div className="form-field">
                 <label htmlFor="insumoIndex">Seleccionar Insumo</label>
-                <select id="insumoIndex"
-                  className="field-input"
-                  name="insumoIndex" 
-                  value={inspectionData.insumoIndex} 
-                  onChange={handleInspectionChange} 
-                  disabled={!inspectionData.invoiceId}
-                  required
-                >
-                  <option value="" disabled>Seleccione un insumo...</option>
-                  {selectedInvoiceItems.map((ins, idx) => (
-                    <option key={idx} value={idx}>{ins.reference}</option>
-                  ))}
-                </select>
+                <CustomSelect id="insumoIndex" name="insumoIndex" value={inspectionData.insumoIndex} onChange={handleInspectionChange} options={selectedInvoiceItems.map((ins, idx) => ({ value: idx, label: ins.reference }))} placeholder="Seleccione un insumo..." disabled={!inspectionData.invoiceId} required />
               </div>
             </div>
 
@@ -667,12 +705,12 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
                       <div className="form-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gridColumn: 'span 2', gap: '1rem' }}>
                         <div className="form-field form-field-inline">
                           <label>Cantidad Facturada</label>
-                          <input type="number" className="field-input" value={selectedInsumo.quantity || selectedInsumo.cantidad || 0} readOnly />
+                          <NumericInput className="field-input" value={selectedInsumo.quantity || selectedInsumo.cantidad || 0} readOnly />
                         </div>
                         <div className="form-field form-field-inline">
                           <label>Cantidad a Inspeccionar</label>
                           <div className="field-input-group">
-                            <input type="number" className="field-input text-center" value={inspectionData.details.cantidad_recepcionar || ''} readOnly />
+                            <NumericInput className="field-input text-center" value={inspectionData.details.cantidad_recepcionar || ''} readOnly />
                             <span className="input-group-addon">Item {currentStep} de {maxSteps}</span>
                           </div>
                         </div>
@@ -729,17 +767,27 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
                                       onClick={() => handleInspectionChange({ target: { name: key, value: false } })}
                                     >Rechazado</button>
                                   </div>
+                                ) : key.includes('date') ? (
+                                  <TextInput
+                                    id={key}
+                                    type="date"
+                                    name={key}
+                                    className="field-input"
+                                    style={{ flex: '1' }}
+                                    value={currentItem[key] || ''}
+                                    onChange={handleInspectionChange}
+                                    required
+                                  />
                                 ) : (
-                                  <input 
+                                  <NumericInput 
                                     id={key} 
-                                    type={key.includes('date') ? 'date' : 'number'} 
                                     name={key} 
                                     className="field-input" 
                                     style={{ flex: '1' }} 
-                                    step="0.01" 
                                     value={currentItem[key] || ''} 
-                                    onChange={handleInspectionChange} 
-                                    placeholder={key.includes('date') ? '' : "0.00"} 
+                                    onChange={handleInspectionChange}
+                                    maxDecimals={4}
+                                    placeholder="0.00" 
                                     required 
                                   />
                                 )}
@@ -799,6 +847,19 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
           <p>Registro de actividades diarias y reportes de producción.</p>
         </section>
       )}
+
+      {/* Modal de emergencia por rechazo en inspección */}
+      <ConfirmModal
+        isOpen={showRejectionModal}
+        title="¡ALERTA DE RECHAZADO!"
+        message="Se detectó un parámetro en estado RECHAZADO. La inspección ahora será al 100% de la cantidad facturada. Se deberán inspeccionar todas las unidades."
+        onConfirm={handleAcceptRejection}
+        onCancel={() => setShowRejectionModal(false)}
+        confirmText="Aceptar"
+        cancelText="Cancelar"
+        type="danger"
+        alarm={true}
+      />
     </div>
   );
 };

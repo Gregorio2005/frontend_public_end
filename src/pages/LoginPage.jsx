@@ -1,8 +1,9 @@
-﻿﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginUser, forgotPassword } from '../services/authService';
 import Logo from '../components/Logo';
 import ConfirmModal from '../components/ConfirmModal';
+import TextInput from '../components/TextInput';
 import logoImg from '../assets/logo.jpeg';
 import './LoginPage.css';
 
@@ -111,7 +112,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                 <span className="material-symbols-outlined">person</span>
                 Usuario
               </label>
-              <input
+              <TextInput
                 id="username"
                 name="username"
                 type="text"
@@ -119,6 +120,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                 placeholder="Usuario"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                sanitize="quotes"
                 required
               />
             </div>
@@ -129,7 +131,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                 Contraseña
               </label>
               <div className="password-wrapper">
-                <input
+                <TextInput
                   id="password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
@@ -137,6 +139,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                   placeholder="Contraseña"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  sanitize="quotes"
                   required
                 />
                 <button 
@@ -197,12 +200,13 @@ const LoginPage = ({ onLoginSuccess }) => {
             <form onSubmit={handleForgotSubmit}>
               <div className="field-group">
                 <label className="field-label">Correo Corporativo</label>
-                <input
-                  type="email"
+                <TextInput
+                  type="text"
                   className="field-input"
                   placeholder="usuario@sealingproducts.com"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
+                  sanitize="quotes"
                   required
                 />
               </div>

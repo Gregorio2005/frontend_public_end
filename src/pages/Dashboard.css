@@ -764,6 +764,17 @@
   box-shadow: 0 0 0 4px rgba(168, 0, 12, 0.08);
 }
 
+select.field-input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235d5e61' d='M6 8.825L1.175 4 2.238 2.938 6 6.7 9.763 2.937 10.825 4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.25rem;
+  cursor: pointer;
+}
+
 .form-actions {
   margin-top: 2rem;
   display: flex;
@@ -844,6 +855,14 @@
 }
 
 .industrial-table tbody tr:hover {
+  background-color: var(--surface-container-low);
+}
+
+.user-row {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.user-row:hover {
   background-color: var(--surface-container-low);
 }
 
@@ -962,13 +981,22 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(4px); /* Efecto de difuminado solicitado */
+  background: rgba(15, 23, 42, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 3000;
   padding: 1rem;
+}
+
+/* Efecto de alarma roja para rechazos */
+.modal-overlay.alarm {
+  animation: alarmPulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes alarmPulse {
+  from { background: rgba(168, 0, 12, 0.25); }
+  to { background: rgba(168, 0, 12, 0.65); }
 }
 
 .modal-container {
@@ -1207,3 +1235,33 @@
   margin-top: 4px;
   display: block;
 }
+
+/* Inputs numéricos: sin flechas ni scroll */
+.numeric-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.numeric-input::-webkit-outer-spin-button,
+.numeric-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Inputs de texto: estilo base */
+.text-input {
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--outline-variant, #c4c7c5);
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  background: var(--surface-container-lowest, #fff);
+  color: var(--on-surface, #1c1b1f);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.text-input:focus {
+  outline: none;
+  border-color: var(--primary, #a8000c);
+  box-shadow: 0 0 0 2px rgba(168, 0, 12, 0.15);
+}
+
+

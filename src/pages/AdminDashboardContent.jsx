@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults, getPendingPhotos, approveProfilePhoto, rejectProfilePhoto } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
 import Avatar from '../components/Avatar';
+import TextInput from '../components/TextInput';
+import CustomSelect from '../components/CustomSelect';
  
 const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications }) => {
   // Estado inicial siguiendo el orden de la base de datos
@@ -18,6 +20,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   });
 
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Estado para notificaciones personalizadas (Reemplaza a window.alert)
   const [notification, setNotification] = useState({ message: '', type: 'success', visible: false });
@@ -178,6 +181,8 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   const [fetchingUsers, setFetchingUsers] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [isEditingModal, setIsEditingModal] = useState(false);
 
   // Estado para el buscador
   const [searchTerm, setSearchTerm] = useState('');
@@ -220,6 +225,17 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
     message: '',
     onConfirm: () => {}
   });
+
+  // Bloquear scroll del body cuando cualquier modal esté abierto
+  useEffect(() => {
+    const isAnyModalOpen = selectedUser || selectedApplicant || cvModalUrl || confirmModal.isOpen;
+    if (isAnyModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [selectedUser, selectedApplicant, cvModalUrl, confirmModal.isOpen]);
 
   const refreshPendingPhotos = async () => {
     try {
@@ -310,13 +326,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Validación estricta para el número de cédula: solo números
-    if (name === 'ci_number') {
-      const numericValue = value.replace(/\D/g, '');
-      setFormData(prev => ({ ...prev, [name]: numericValue }));
-    } else {
     setFormData(prev => ({ ...prev, [name]: value }));
-    }
   };
 
   const handleSubmit = async (e) => {
@@ -340,6 +350,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
         user: '', password: '', name: '', lastname: '',
         ci_type: 'V-', ci_number: '', email: '', roles_id: '1', status: 'Activo'
       });
+      setShowPassword(false);
     } catch (error) {
       showNotification(`Error: ${error.message}`, 'error');
     } finally {
@@ -356,6 +367,19 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   const handleCancelEdit = () => {
     setEditingUserId(null);
     setEditFormData({});
+    setIsEditingModal(false);
+  };
+
+  const handleRowClick = (user) => {
+    setSelectedUser(user);
+    setIsEditingModal(false);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedUser(null);
+    setIsEditingModal(false);
+    setEditFormData({});
+    setEditingUserId(null);
   };
 
   const handleEditChange = (e) => {
@@ -367,15 +391,14 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
     if (e && e.preventDefault) e.preventDefault();
     setLoading(true);
     try {
-      // Estructura exacta requerida por el requerimiento
       const payload = {
         user: String(editFormData.user || ''),
         name: String(editFormData.name || ''),
         lastname: String(editFormData.lastname || ''),
-        ci: String(editFormData.ci || ''), // Mantiene letras y caracteres (V, E, -, .)
+        ci: String(editFormData.ci_type || 'V-') + String(editFormData.ci_number || ''),
         email: String(editFormData.email || ''),
-        roles_id: parseInt(editFormData.roles_id, 10), // Convertido a entero
-        status: editFormData.status === 'Inactivo' ? 'Inactivo' : 'Activo' // Validación estricta
+        roles_id: parseInt(editFormData.roles_id, 10),
+        status: editFormData.status === 'Inactivo' ? 'Inactivo' : 'Activo'
       };
 
       await updateUser(editingUserId, payload);
@@ -385,9 +408,8 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
       const data = await getUsers();
       const updatedList = Array.isArray(data) ? data : (data.data || []);
       setUsers(updatedList);
-      handleCancelEdit();
+      handleCloseModal();
     } catch (error) {
-      // 4. Captura de errores de red o de respuesta del servidor (4xx, 5xx)
       console.error("Error capturado:", error);
       showNotification(`No se pudo completar la operación: ${error.message}`, 'error');
     } finally {
@@ -614,7 +636,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
       {/* Modal de Detalle de Postulante */}
       {selectedApplicant && (
         <div className="modal-overlay" onClick={handleCloseApplicantDetail}>
-          <div className="modal-container" style={{ maxWidth: '600px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-container" style={{ maxWidth: '700px', width: '95%', maxHeight: '92vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header" style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
               <span className="material-symbols-outlined">person</span>
               <h3>Detalle del Postulante</h3>
@@ -745,7 +767,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
                             <div className="form-field">
                               <label style={{ fontSize: '0.75rem' }}>Fecha</label>
-                              <input
+                              <TextInput
                                 type="datetime-local"
                                 className="field-input"
                                 value={editApplicantData.interview_formal_date}
@@ -756,17 +778,16 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                             </div>
                             <div className="form-field">
                               <label style={{ fontSize: '0.75rem' }}>Resultado</label>
-                              <select
-                                className="field-input"
+                              <CustomSelect
                                 value={editApplicantData.interview_formal_result}
                                 disabled={!isFormalResultEditable}
                                 onChange={(e) => setEditApplicantData(prev => ({ ...prev, interview_formal_result: e.target.value }))}
-                                style={{ opacity: !isFormalResultEditable ? 0.5 : 1 }}
-                              >
-                                <option value="Pendiente">Pendiente</option>
-                                <option value="Entrevista formal aprobada">Aprobado</option>
-                                <option value="Entrevista formal rechazada">Rechazado</option>
-                              </select>
+                                options={[
+                                  { value: 'Pendiente', label: 'Pendiente' },
+                                  { value: 'Entrevista formal aprobada', label: 'Aprobado' },
+                                  { value: 'Entrevista formal rechazada', label: 'Rechazado' }
+                                ]}
+                              />
                             </div>
                           </div>
                         </div>
@@ -777,7 +798,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
                             <div className="form-field">
                               <label style={{ fontSize: '0.75rem' }}>Fecha</label>
-                              <input
+                              <TextInput
                                 type="datetime-local"
                                 className="field-input"
                                 value={editApplicantData.interview_medical_date}
@@ -788,17 +809,16 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                             </div>
                             <div className="form-field">
                               <label style={{ fontSize: '0.75rem' }}>Resultado</label>
-                              <select
-                                className="field-input"
+                              <CustomSelect
                                 value={editApplicantData.interview_medical_result}
                                 disabled={!isMedicalResultEditable}
                                 onChange={(e) => setEditApplicantData(prev => ({ ...prev, interview_medical_result: e.target.value }))}
-                                style={{ opacity: !isMedicalResultEditable ? 0.5 : 1 }}
-                              >
-                                <option value="Pendiente">Pendiente</option>
-                                <option value="Entrevista medica aprobada">Aprobado</option>
-                                <option value="Entrevista medica rechazada">Rechazado</option>
-                              </select>
+                                options={[
+                                  { value: 'Pendiente', label: 'Pendiente' },
+                                  { value: 'Entrevista medica aprobada', label: 'Aprobado' },
+                                  { value: 'Entrevista medica rechazada', label: 'Rechazado' }
+                                ]}
+                              />
                             </div>
                           </div>
                         </div>
@@ -861,12 +881,13 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                   <div className="table-filters">
                     <div className="table-search-wrapper">
                       <span className="material-symbols-outlined">search</span>
-                      <input 
-                        type="text" 
-                        className="table-search-input" 
-                        placeholder="Buscar por nombre o CI..." 
+                      <TextInput
+                        type="text"
+                        className="table-search-input"
+                        placeholder="Buscar por nombre o CI..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
+                        sanitize="quotes"
                       />
                     </div>
                   </div>
@@ -874,14 +895,10 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                   <table className="industrial-table">
                     <thead>
                       <tr>
+                        <th>Nombre completo</th>
                         <th>Usuario</th>
-                        <th>Nombre</th>
-                        <th>Apellido</th>
                         <th>Rol</th>
-                        <th style={{ minWidth: '130px' }}>CI</th>
-                        <th>Email</th>
                         <th>Estado</th>
-                        <th className="text-center">Modificar</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -890,74 +907,25 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                           .sort((a, b) => (a.roles_id || 0) - (b.roles_id || 0))
                           .map((u) => {
                             const rowId = u.user_id || u.id || u.user;
-                            const isEditing = editingUserId === rowId;
                             return (
-                          <tr key={rowId || `user-${u.ci}`}>
-                            <td style={{ fontWeight: '600' }}>
-                              {isEditing ? <input name="user" className="field-input" style={{ padding: '0.4rem' }} value={editFormData.user || ''} onChange={handleEditChange} /> : u.user}
-                            </td>
+                          <tr key={rowId || `user-${u.ci}`} className="user-row" onClick={() => handleRowClick(u)}>
+                            <td style={{ fontWeight: '600' }}>{u.name} {u.lastname}</td>
+                            <td>{u.user}</td>
+                            <td><span className="role-badge">{getRoleName(u.roles_id)}</span></td>
                             <td>
-                              {isEditing ? <input name="name" className="field-input" style={{ padding: '0.4rem' }} value={editFormData.name || ''} onChange={handleEditChange} /> : u.name}
-                            </td>
-                            <td>
-                              {isEditing ? <input name="lastname" className="field-input" style={{ padding: '0.4rem' }} value={editFormData.lastname || ''} onChange={handleEditChange} /> : u.lastname}
-                            </td>
-                            <td>
-                              {isEditing ? (
-                                <select name="roles_id" className="field-input" style={{ padding: '0.4rem' }} value={editFormData.roles_id || ''} onChange={handleEditChange}>
-                                  <option value="1">Administrador</option>
-                                  <option value="2">Trabajador</option>
-                                  <option value="3">Jefe de Calidad</option>
-                                  <option value="4">Jefe de Ingeniería</option>
-                                </select>
-                              ) : (
-                                <span className="role-badge">{getRoleName(u.roles_id)}</span>
-                              )}
-                            </td>
-                            <td>
-                              {isEditing ? <input name="ci" className="field-input" style={{ padding: '0.4rem' }} value={editFormData.ci || ''} onChange={handleEditChange} /> : u.ci}
-                            </td>
-                            <td>
-                              {isEditing ? <input name="email" className="field-input" style={{ padding: '0.4rem' }} value={editFormData.email || ''} onChange={handleEditChange} /> : u.email}
-                            </td>
-                            <td>
-                              {isEditing ? (
-                                <select name="status" className="field-input" style={{ padding: '0.4rem' }} value={editFormData.status || ''} onChange={handleEditChange}>
-                                  <option value="Activo">Activo</option>
-                                  <option value="Inactivo">Inactivo</option>
-                                </select>
-                              ) : (
-                                <div className="status-indicator">
-                                  <div 
-                                    className={`status-dot ${u.status?.toLowerCase() === 'activo' ? 'active' : 'inactive'}`}
-                                  ></div>
-                                  <span 
-                                    style={{ 
-                                      color: u.status?.toLowerCase() === 'activo' ? 'var(--on-surface)' : 'var(--secondary)',
-                                      fontSize: '0.85rem' 
-                                    }}
-                                  >
-                                    {u.status}
-                                  </span>
-                                </div>
-                              )}
-                            </td>
-                            <td className="text-center">
-                              {isEditing ? (
-                                <>
-                                  <button className="btn-icon-save" title="Guardar" onClick={handleSaveEdit} disabled={loading}>✅</button>
-                                  <button className="btn-icon-cancel" title="Cancelar" onClick={handleCancelEdit} disabled={loading}>❌</button>
-                                </>
-                              ) : (
-                                <button className="btn-icon-edit" title="Modificar" onClick={() => handleEditClick(u)}>✏️</button>
-                              )}
+                              <div className="status-indicator">
+                                <div className={`status-dot ${u.status?.toLowerCase() === 'activo' ? 'active' : 'inactive'}`}></div>
+                                <span style={{ color: u.status?.toLowerCase() === 'activo' ? 'var(--on-surface)' : 'var(--secondary)', fontSize: '0.85rem' }}>
+                                  {u.status}
+                                </span>
+                              </div>
                             </td>
                           </tr>
                             );
                           })
                       ) : (
                         <tr>
-                          <td colSpan="8" className="text-center no-data">
+                          <td colSpan="4" className="text-center no-data">
                             No hay usuarios registrados o no se pudieron cargar.
                           </td>
                         </tr>
@@ -968,6 +936,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                 </div>
               )}
             </div>
+
           ) : subView === 'add' ? (
             <div className="form-container">
               <h2 className="form-title">Registrar Nuevo Usuario</h2>
@@ -975,63 +944,99 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                 <div className="form-grid">
                   <div className="form-field">
                     <label>Nombre</label>
-                    <input type="text" name="name" className="field-input" value={formData.name} onChange={handleChange} placeholder="Nombre" required />
+                    <TextInput type="text" name="name" className="field-input" value={formData.name} onChange={handleChange} placeholder="Nombre" sanitize="alpha" required />
                   </div>
                   <div className="form-field">
                     <label>Apellido</label>
-                    <input type="text" name="lastname" className="field-input" value={formData.lastname} onChange={handleChange} placeholder="Apellido" required />
+                    <TextInput type="text" name="lastname" className="field-input" value={formData.lastname} onChange={handleChange} placeholder="Apellido" sanitize="alpha" required />
                   </div>
                   <div className="form-field">
                     <label>Nombre de Usuario</label>
-                    <input type="text" name="user" className="field-input" value={formData.user} onChange={handleChange} placeholder="Nombre de acceso" required />
+                    <TextInput type="text" name="user" className="field-input" value={formData.user} onChange={handleChange} placeholder="Nombre de acceso" sanitize="quotes" required />
                   </div>
                   <div className="form-field">
                     <label>Contraseña</label>
-                    <input type="password" name="password" className="field-input" value={formData.password} onChange={handleChange} placeholder="••••••••" required />
+                    <div style={{ position: 'relative' }}>
+                      <TextInput 
+                        type={showPassword ? 'text' : 'password'} 
+                        name="password" 
+                        className="field-input" 
+                        style={{ paddingRight: '40px' }}
+                        value={formData.password} 
+                        onChange={handleChange} 
+                        placeholder="••••••••" 
+                        sanitize="quotes"
+                        required 
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        style={{
+                          position: 'absolute',
+                          right: '8px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--secondary)'
+                        }}
+                        title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                          {showPassword ? 'visibility_off' : 'visibility'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                   <div className="form-field">
                     <label>Cédula de Identidad</label>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <select 
-                        name="ci_type" 
-                        className="field-input" 
-                        style={{ width: '80px', textAlign: 'center', fontWeight: 'bold' }}
-                        value={formData.ci_type} 
+                      <CustomSelect
+                        name="ci_type"
+                        style={{ minWidth: '100px', maxWidth: '100px' }}
+                        value={formData.ci_type}
                         onChange={handleChange}
-                      >
-                        <option value="V-">V-</option>
-                        <option value="E-">E-</option>
-                      </select>
-                      <input 
+                        options={[
+                          { value: 'V-', label: 'V-' },
+                          { value: 'E-', label: 'E-' }
+                        ]}
+                      />
+                      <TextInput 
                         type="text" 
                         name="ci_number" 
                         className="field-input" 
                         value={formData.ci_number} 
                         onChange={handleChange} 
                         placeholder="Solo números" 
+                        sanitize="digits"
                         required 
                       />
                     </div>
                   </div>
                   <div className="form-field">
                     <label>Correo Electrónico</label>
-                    <input type="email" name="email" className="field-input" value={formData.email} onChange={handleChange} placeholder="correo@ejemplo.com" required />
+                    <TextInput type="email" name="email" className="field-input" value={formData.email} onChange={handleChange} placeholder="correo@ejemplo.com" sanitize="quotes" required />
                   </div>
                   <div className="form-field">
                     <label>Rol asignado</label>
-                    <select name="roles_id" className="field-input" value={formData.roles_id} onChange={handleChange}>
-                      <option value="1">Administrador</option>
-                      <option value="2">Trabajador</option>
-                      <option value="3">Jefe de Calidad</option>
-                      <option value="4">Jefe de Ingeniería</option>
-                    </select>
+                    <CustomSelect name="roles_id" value={formData.roles_id} onChange={handleChange} options={[
+                      { value: '1', label: 'Administrador' },
+                      { value: '2', label: 'Trabajador' },
+                      { value: '3', label: 'Jefe de Calidad' },
+                      { value: '4', label: 'Jefe de Ingeniería' }
+                    ]} />
                   </div>
                   <div className="form-field">
                     <label>Estado de Cuenta</label>
-                    <select name="status" className="field-input" value={formData.status} onChange={handleChange}>
-                      <option value="Activo">Activo</option>
-                      <option value="Inactivo">Inactivo</option>
-                    </select>
+                    <CustomSelect name="status" value={formData.status} onChange={handleChange} options={[
+                      { value: 'Activo', label: 'Activo' },
+                      { value: 'Inactivo', label: 'Inactivo' }
+                    ]} />
                   </div>
                 </div>
                 <div className="form-actions">
@@ -1151,14 +1156,15 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                   <div className="form-field" style={{ flex: 1, minWidth: '300px' }}>
                     <label>Nombre del Comunicado (Ej: VACANTE ACTIVA: ADMINISTRADOR)</label>
-                    <input 
-                      type="text" 
-                      name="name" 
-                      className="field-input" 
-                      value={websiteNotice.name} 
-                      onChange={handleWebsiteNoticeChange} 
-                      placeholder="Nombre de la vacante o comunicado" 
-                      required 
+                    <TextInput
+                      type="text"
+                      name="name"
+                      className="field-input"
+                      value={websiteNotice.name}
+                      onChange={handleWebsiteNoticeChange}
+                      placeholder="Nombre de la vacante o comunicado"
+                      sanitize="quotesNoSpaces"
+                      required
                     />
                   </div>
                   <div className="form-field" style={{ flexBasis: '100%' }}>
@@ -1209,12 +1215,13 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                   <div className="table-filters">
                     <div className="table-search-wrapper">
                       <span className="material-symbols-outlined">search</span>
-                      <input 
-                        type="text" 
-                        className="table-search-input" 
-                        placeholder="Buscar en el historial de avisos..." 
+                      <TextInput
+                        type="text"
+                        className="table-search-input"
+                        placeholder="Buscar en el historial de avisos..."
                         value={noticeSearchTerm}
                         onChange={(e) => setNoticeSearchTerm(e.target.value)}
+                        sanitize="quotes"
                       />
                     </div>
                   </div>
@@ -1389,19 +1396,11 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
           <div className="form-grid" style={{ marginBottom: '2rem' }}>
             <div className="form-field">
               <label>Seleccionar Factura</label>
-              <select name="invoiceId" className="field-input" value={inspectionView.invoiceId} onChange={handleInspectionViewChange}>
-                <option value="" disabled>Seleccione una factura...</option>
-                {inspectionInvoices.map(inv => <option key={inv.id} value={inv.id}>{inv.bill_nro}</option>)}
-              </select>
+              <CustomSelect name="invoiceId" value={inspectionView.invoiceId} onChange={handleInspectionViewChange} options={inspectionInvoices.map(inv => ({ value: inv.id, label: inv.bill_nro }))} placeholder="Seleccione una factura..." />
             </div>
             <div className="form-field">
               <label>Seleccionar Insumo</label>
-              <select name="insumoIndex" className="field-input" value={inspectionView.insumoIndex} onChange={handleInspectionViewChange} disabled={!inspectionView.invoiceId}>
-                <option value="" disabled>Seleccione referencia...</option>
-                {selectedInvoiceItems.map((ins, idx) => (
-                  <option key={ins.id} value={idx}>{ins.reference}</option>
-                ))}
-              </select>
+              <CustomSelect name="insumoIndex" value={inspectionView.insumoIndex} onChange={handleInspectionViewChange} disabled={!inspectionView.invoiceId} options={selectedInvoiceItems.map((ins, idx) => ({ value: idx, label: ins.reference }))} placeholder="Seleccione referencia..." />
             </div>
           </div>
 
@@ -1456,12 +1455,12 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                             {savedValue === true ? 'Aprobado' : (savedValue === false ? 'Rechazado' : 'N/A')}
                           </div>
                         ) : (
-                          <input 
-                            type="text" 
-                            className="field-input" 
-                            style={{ flex: '1', backgroundColor: '#f8fafc' }} 
-                            value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')} 
-                            readOnly 
+                          <TextInput
+                            type="text"
+                            className="field-input"
+                            style={{ flex: '1', backgroundColor: '#f8fafc' }}
+                            value={isDate ? (savedValue ? savedValue.split('T')[0] : 'Sin fecha') : (savedValue !== undefined ? Number(savedValue).toFixed(3) : '')}
+                            readOnly
                           />
                         )}
                         <span style={{ color: status.color, fontWeight: 'bold', minWidth: '100px', textAlign: 'right' }}>
@@ -1517,6 +1516,131 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
           {inspectionView.insumoIndex !== '' && inspectionHistory.length === 0 && !loading && (
             <p className="no-data text-center">No se encontraron inspecciones realizadas para este ítem.</p>
           )}
+        </div>
+      )}
+
+      {/* Modal de Detalle de Usuario */}
+      {selectedUser && (
+        <div className="modal-overlay" onClick={handleCloseModal}>
+          <div className="modal-container" style={{ maxWidth: '700px', width: '95%' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ backgroundColor: 'var(--primary)', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="material-symbols-outlined">person</span>
+                <h3 style={{ margin: 0 }}>Detalle del Usuario</h3>
+              </div>
+              <button onClick={handleCloseModal} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
+            </div>
+            <div className="modal-body" style={{ padding: '1.5rem', maxHeight: '80vh', overflowY: 'auto' }}>
+              {isEditingModal ? (
+                /* ---- MODO EDICION ---- */
+                <form onSubmit={handleSaveEdit}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div className="form-field">
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Nombre</label>
+                      <TextInput name="name" className="field-input" value={editFormData.name || ''} onChange={handleEditChange} sanitize="alpha" required />
+                    </div>
+                    <div className="form-field">
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Apellido</label>
+                      <TextInput name="lastname" className="field-input" value={editFormData.lastname || ''} onChange={handleEditChange} sanitize="alpha" required />
+                    </div>
+                    <div className="form-field">
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Usuario</label>
+                      <TextInput name="user" className="field-input" value={editFormData.user || ''} onChange={handleEditChange} sanitize="quotesNoSpaces" required />
+                    </div>
+                    <div className="form-field">
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>CI</label>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <CustomSelect
+                          name="ci_type"
+                          style={{ minWidth: '100px', maxWidth: '100px' }}
+                          value={editFormData.ci_type || 'V-'}
+                          onChange={handleEditChange}
+                          menuPosition="fixed"
+                          options={[
+                            { value: 'V-', label: 'V-' },
+                            { value: 'E-', label: 'E-' }
+                          ]}
+                        />
+                        <TextInput
+                          name="ci_number"
+                          className="field-input"
+                          value={editFormData.ci_number || ''}
+                          onChange={handleEditChange}
+                          placeholder="Solo números"
+                          sanitize="digits"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Email</label>
+                      <TextInput name="email" className="field-input" type="email" value={editFormData.email || ''} onChange={handleEditChange} sanitize="quotesNoSpaces" required />
+                    </div>
+                    <div className="form-field">
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Rol</label>
+                      <CustomSelect name="roles_id" value={editFormData.roles_id || ''} onChange={handleEditChange} menuPosition="fixed" options={[
+                        { value: '1', label: 'Administrador' },
+                        { value: '2', label: 'Trabajador' },
+                        { value: '3', label: 'Jefe de Calidad' },
+                        { value: '4', label: 'Jefe de Ingenieria' }
+                      ]} />
+                    </div>
+                    <div className="form-field">
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Estado</label>
+                      <CustomSelect name="status" value={editFormData.status || ''} onChange={handleEditChange} menuPosition="fixed" options={[
+                        { value: 'Activo', label: 'Activo' },
+                        { value: 'Inactivo', label: 'Inactivo' }
+                      ]} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem', borderTop: '1px solid var(--outline-variant)', paddingTop: '1rem' }}>
+                    <button type="button" className="btn btn-secondary" onClick={handleCancelEdit} disabled={loading}>Cancelar</button>
+                    <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Guardando...' : 'Guardar Cambios'}</button>
+                  </div>
+                </form>
+              ) : (
+                /* ---- MODO LECTURA ---- */
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Nombre completo</label>
+                      <p style={{ margin: 0, fontWeight: '600', fontSize: '0.95rem' }}>{selectedUser.name} {selectedUser.lastname}</p>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Usuario</label>
+                      <p style={{ margin: 0, fontWeight: '600', fontSize: '0.95rem' }}>{selectedUser.user}</p>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>CI</label>
+                      <p style={{ margin: 0, fontSize: '0.95rem' }}>{selectedUser.ci}</p>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Email</label>
+                      <p style={{ margin: 0, fontSize: '0.95rem' }}>{selectedUser.email}</p>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Rol</label>
+                      <p style={{ margin: 0 }}><span className="role-badge">{getRoleName(selectedUser.roles_id)}</span></p>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Estado</label>
+                      <div className="status-indicator">
+                        <div className={`status-dot ${selectedUser.status?.toLowerCase() === 'activo' ? 'active' : 'inactive'}`}></div>
+                        <span style={{ color: selectedUser.status?.toLowerCase() === 'activo' ? 'var(--on-surface)' : 'var(--secondary)', fontSize: '0.85rem' }}>
+                          {selectedUser.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem', borderTop: '1px solid var(--outline-variant)', paddingTop: '1rem' }}>
+                    <button className="btn btn-primary" onClick={() => { const ci = selectedUser.ci || ''; const ci_type = ci.startsWith('E-') ? 'E-' : 'V-'; const ci_number = ci.replace(/^V-|^E-/, ''); setEditingUserId(selectedUser.user_id || selectedUser.id); setEditFormData({ ...selectedUser, ci_type, ci_number }); setIsEditingModal(true); }}>
+                      Editar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
