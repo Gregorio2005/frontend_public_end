@@ -18,6 +18,7 @@ const CustomSelect = ({
   className = '',
   style = {},
   menuMinWidth = null,
+  menuPlacement = 'auto',
   ...rest
 }) => {
   const selectedOption = options.find(opt => String(opt.value) === String(value)) || null;
@@ -40,6 +41,7 @@ const CustomSelect = ({
       isDisabled={disabled}
       isSearchable={false}
       required={required}
+      menuPlacement={menuPlacement}
       styles={{
         control: (base, state) => ({
           ...base,

@@ -651,7 +651,7 @@ const JefeCalidadDashboardContent = ({ activeAction, user, refreshNotifications 
                         + Añadir Fila
                       </button>
                     </div>
-                    <div className="table-container-card">
+                    <div className="table-container-card" style={{ overflow: 'visible' }}>
                       <table className="industrial-table">
                         <thead>
                           <tr>

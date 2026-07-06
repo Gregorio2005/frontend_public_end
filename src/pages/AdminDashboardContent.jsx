@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults, getPendingPhotos, approveProfilePhoto, rejectProfilePhoto, getWebsiteProductsAll, createWebsiteProduct, updateWebsiteProduct, deleteWebsiteProduct } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
+import Pagination from '../components/Pagination';
 import Avatar from '../components/Avatar';
 import TextInput from '../components/TextInput';
 import CustomSelect from '../components/CustomSelect';
@@ -115,11 +116,13 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   // Estado para los avisos
   const [websiteNotice, setWebsiteNotice] = useState({ id: null, name: '', note: '', enabled: false }); // Inicializamos con valores vacíos, incluyendo id
   const [noticesList, setNoticesList] = useState([]); // Lista para la tabla
+  const [noticesPagination, setNoticesPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [noticeSearchTerm, setNoticeSearchTerm] = useState(''); // Buscador de avisos
   const [processingId, setProcessingId] = useState(null); // Para saber qué fila se está cargando
 
   // Estado para productos del catálogo web
   const [websiteProducts, setWebsiteProducts] = useState([]);
+  const [productsPagination, setProductsPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({ name: '', description: '', display_order: '0', status: 'Activo' });
   const [productImage, setProductImage] = useState(null);
@@ -133,10 +136,11 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
     setTimeout(() => setProductNotification(prev => ({ ...prev, visible: false })), 4000);
   };
 
-  const loadWebsiteProducts = async () => {
+  const loadWebsiteProducts = async (page = 1) => {
     try {
-      const data = await getWebsiteProductsAll();
-      setWebsiteProducts(data);
+      const result = await getWebsiteProductsAll({ page, limit: 10 });
+      setWebsiteProducts(result.data);
+      setProductsPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
     } catch (error) {
       console.error("Error al cargar productos del sitio web:", error);
     }
@@ -246,10 +250,11 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   };
 
   // Función para cargar la lista de mensajes registrados
-  const loadNotices = async () => {
+  const loadNotices = async (page = 1) => {
     try {
-      const data = await getNoticesList();
-      setNoticesList(data);
+      const result = await getNoticesList({ page, limit: 10 });
+      setNoticesList(result.data);
+      setNoticesPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
     } catch (error) {
       console.error("Error al cargar avisos:", error);
     }
@@ -305,6 +310,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
 
   // Estados para la lista de usuarios
   const [users, setUsers] = useState([]);
+  const [usersPagination, setUsersPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [fetchingUsers, setFetchingUsers] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
@@ -316,12 +322,14 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
 
   // Estados para la lista de postulantes
   const [applicants, setApplicants] = useState([]);
+  const [applicantsPagination, setApplicantsPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [fetchingApplicants, setFetchingApplicants] = useState(false);
 
-  const refreshApplicants = async () => {
+  const refreshApplicants = async (page = 1) => {
     try {
-      const data = await getApplicants();
-      setApplicants(data);
+      const result = await getApplicants({ page, limit: 10 });
+      setApplicants(result.data);
+      setApplicantsPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
     } catch (error) {
       console.error("Error al recargar postulantes:", error);
     }
@@ -340,6 +348,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   // Estado interno para alternar entre la lista de usuarios y el registro
   const [subView, setSubView] = useState('list'); // 'list', 'add' o 'photos'
   const [pendingPhotos, setPendingPhotos] = useState([]);
+  const [photosPagination, setPhotosPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [previewImage, setPreviewImage] = useState(null);
 
   // Estado para tabs de Página Web (Comunicado web / Postulantes)
@@ -364,10 +373,11 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
     return () => { document.body.style.overflow = ''; };
   }, [selectedUser, selectedApplicant, cvModalUrl, confirmModal.isOpen]);
 
-  const refreshPendingPhotos = async () => {
+  const refreshPendingPhotos = async (page = 1) => {
     try {
-      const data = await getPendingPhotos();
-      setPendingPhotos(Array.isArray(data) ? data : []);
+      const result = await getPendingPhotos({ page, limit: 10 });
+      setPendingPhotos(result.data);
+      setPhotosPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
     } catch (error) {
       console.error("Error al cargar fotos pendientes:", error);
     }
@@ -376,17 +386,12 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   // Cargar usuarios cuando se entra a la sección de usuarios en modo lista
   useEffect(() => {
     if (activeAction === 'users' && subView === 'list') {
-      const loadUsers = async () => {
+      const loadUsers = async (page = 1) => {
         setFetchingUsers(true);
         try {
-          const data = await getUsers();
-          // Normalización definitiva: asegurar que siempre sea un array para evitar errores de .map()
-          let usersList = [];
-          if (Array.isArray(data)) usersList = data;
-          else if (data && Array.isArray(data.data)) usersList = data.data;
-
-          console.log("Usuarios cargados:", usersList); // Para depuración
-          setUsers(usersList);
+          const result = await getUsers({ page, limit: 10 });
+          setUsers(result.data);
+          setUsersPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
         } catch (error) {
           console.error("Error al cargar la tabla:", error);
         } finally {
@@ -403,11 +408,12 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
 
     // Cargar postulantes cuando se selecciona la acción correspondiente
     if (activeAction === 'applicants') {
-      const loadApplicants = async () => {
+      const loadApplicants = async (page = 1) => {
         setFetchingApplicants(true);
         try {
-          const data = await getApplicants();
-          setApplicants(data);
+          const result = await getApplicants({ page, limit: 10 });
+          setApplicants(result.data);
+          setApplicantsPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
         } catch (error) {
           console.error("Error al cargar postulantes:", error);
         } finally {
@@ -532,9 +538,9 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
       
       showNotification("Usuario actualizado exitosamente.");
       
-      const data = await getUsers();
-      const updatedList = Array.isArray(data) ? data : (data.data || []);
-      setUsers(updatedList);
+      const result = await getUsers({ page: usersPagination.page, limit: 10 });
+      setUsers(result.data);
+      setUsersPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
       handleCloseModal();
     } catch (error) {
       console.error("Error capturado:", error);
@@ -1030,8 +1036,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                     </thead>
                     <tbody>
                       {Array.isArray(filteredUsers) && filteredUsers.length > 0 ? (
-                        [...filteredUsers]
-                          .sort((a, b) => (a.roles_id || 0) - (b.roles_id || 0))
+                        filteredUsers
                           .map((u) => {
                             const rowId = u.user_id || u.id || u.user;
                             return (
@@ -1059,6 +1064,23 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                       )}
                     </tbody>
                   </table>
+                  <Pagination
+                    currentPage={usersPagination.page}
+                    totalPages={usersPagination.totalPages}
+                    total={usersPagination.total}
+                    onPageChange={async (page) => {
+                      setFetchingUsers(true);
+                      try {
+                        const result = await getUsers({ page, limit: 10 });
+                        setUsers(result.data);
+                        setUsersPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
+                      } catch (error) {
+                        console.error("Error al cargar usuarios:", error);
+                      } finally {
+                        setFetchingUsers(false);
+                      }
+                    }}
+                  />
                   </div>
                 </div>
               )}
@@ -1233,6 +1255,12 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                currentPage={photosPagination.page}
+                totalPages={photosPagination.totalPages}
+                total={photosPagination.total}
+                onPageChange={(page) => refreshPendingPhotos(page)}
+              />
             </div>
           )}
           {previewImage && (
@@ -1392,6 +1420,12 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                         )}
                       </tbody>
                     </table>
+                    <Pagination
+                      currentPage={noticesPagination.page}
+                      totalPages={noticesPagination.totalPages}
+                      total={noticesPagination.total}
+                      onPageChange={(page) => loadNotices(page)}
+                    />
                   </div>
                 </div>
               </div>
@@ -1505,7 +1539,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                     </thead>
                     <tbody>
                       {websiteProducts.length > 0 ? (
-                        [...websiteProducts].sort((a, b) => a.display_order - b.display_order).map((product) => (
+                        websiteProducts.map((product) => (
                           <tr key={product.id} style={{ cursor: 'pointer' }} onClick={() => handleSelectProduct(product)}>
                             <td style={{ fontWeight: '700', color: 'var(--primary)' }}>#{product.display_order + 1}</td>
                             <td style={{ fontWeight: '600' }}>{product.name}</td>
@@ -1539,6 +1573,12 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                       )}
                     </tbody>
                   </table>
+                  <Pagination
+                    currentPage={productsPagination.page}
+                    totalPages={productsPagination.totalPages}
+                    total={productsPagination.total}
+                    onPageChange={(page) => loadWebsiteProducts(page)}
+                  />
                 </div>
               </div>
 
@@ -1662,12 +1702,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                     </thead>
                     <tbody>
                       {Array.isArray(applicants) && applicants.length > 0 ? (
-                        [...applicants].sort((a, b) => {
-                          const order = { 'En revision': 0, 'Pendiente': 1, 'Aprobado': 2, 'Contratado': 3, 'Rechazado': 4, 'Descartado': 5 };
-                          const aOrder = order[a.status] ?? 6;
-                          const bOrder = order[b.status] ?? 6;
-                          return aOrder - bOrder;
-                        }).map((a) => (
+                        applicants.map((a) => (
                           <tr key={a.id} style={{ cursor: 'pointer' }} onClick={() => handleOpenApplicantDetail(a)}>
                             <td style={{ fontWeight: '600' }}>{a.name}</td>
                             <td>{a.lastname}</td>
@@ -1757,6 +1792,18 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                       )}
                     </tbody>
                   </table>
+                  <Pagination
+                    currentPage={applicantsPagination.page}
+                    totalPages={applicantsPagination.totalPages}
+                    total={applicantsPagination.total}
+                    onPageChange={(page) => {
+                      setFetchingApplicants(true);
+                      getApplicants({ page, limit: 10 }).then(result => {
+                        setApplicants(result.data);
+                        setApplicantsPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
+                      }).catch(console.error).finally(() => setFetchingApplicants(false));
+                    }}
+                  />
                   </div>
                 </div>
               )}

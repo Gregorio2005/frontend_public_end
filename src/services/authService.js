@@ -107,7 +107,7 @@ export const registerUser = async (userData) => {
 /**
  * Servicio para obtener la lista de todos los usuarios.
  */
-export const getUsers = async () => {
+export const getUsers = async ({ page = 1, limit = 10 } = {}) => {
   try {
     const token = localStorage.getItem('token');
     
@@ -115,10 +115,11 @@ export const getUsers = async () => {
       throw new Error('No hay una sesión activa. Por favor, inicie sesión.');
     }
 
-    const response = await fetch(`${API_URL}/users`, {
+    const params = new URLSearchParams({ page, limit });
+    const response = await fetch(`${API_URL}/users?${params}`, {
       method: 'GET',
       headers: { 
-        'Authorization': `Bearer ${token}`, // ¡Confirmado: Esto es vital!
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     });
@@ -129,12 +130,8 @@ export const getUsers = async () => {
       throw new Error('Error al obtener la lista de usuarios');
     }
 
-    const data = await response.json();
-    
-    // Normalización de respuesta: siempre devolvemos un array
-    if (data && Array.isArray(data.data)) return data.data;
-    if (Array.isArray(data)) return data;
-    return []; 
+    const result = await response.json();
+    return { data: result.data || [], total: result.total || 0, page: result.page || 1, totalPages: result.totalPages || 1 };
   } catch (error) {
     console.error("Error obteniendo usuarios:", error);
     throw error;
@@ -294,7 +291,7 @@ export const updateProfile = async (profileData) => {
 /**
  * Servicio para obtener la lista de todos los postulantes desde la tabla 'postulantes'.
  */
-export const getApplicants = async () => {
+export const getApplicants = async ({ page = 1, limit = 10 } = {}) => {
   try {
     const token = localStorage.getItem('token');
     
@@ -302,7 +299,8 @@ export const getApplicants = async () => {
       throw new Error('No hay una sesión activa. Por favor, inicie sesión.');
     }
 
-    const response = await fetch(`${API_URL}/applicants`, {
+    const params = new URLSearchParams({ page, limit });
+    const response = await fetch(`${API_URL}/applicants?${params}`, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${token}`,
@@ -314,9 +312,8 @@ export const getApplicants = async () => {
       throw new Error('Error al obtener la lista de postulantes');
     }
 
-    const data = await response.json();
-    // Retornamos los datos normalizados (asumiendo que el backend los envía en .data o raíz)
-    return Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+    const result = await response.json();
+    return { data: result.data || [], total: result.total || 0, page: result.page || 1, totalPages: result.totalPages || 1 };
   } catch (error) {
     console.error("Error obteniendo postulantes:", error);
     throw error;
@@ -1324,10 +1321,11 @@ export const publishNotice = async (id) => {
 /** 
  * Obtiene la lista de todos los avisos registrados en 'mensajes_web'.
  */
-export const getNoticesList = async () => {
+export const getNoticesList = async ({ page = 1, limit = 10 } = {}) => {
   try {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_URL}/website-notice`, {
+    const params = new URLSearchParams({ page, limit });
+    const response = await fetch(`${API_URL}/website-notice?${params}`, {
       method: 'GET',
       headers: { 
         'Content-Type': 'application/json',
@@ -1336,11 +1334,11 @@ export const getNoticesList = async () => {
     });
     if (!response.ok) throw new Error('Error al obtener lista de avisos');
     
-    const data = await response.json();
-    return data.data || [];
+    const result = await response.json();
+    return { data: result.data || [], total: result.total || 0, page: result.page || 1, totalPages: result.totalPages || 1 };
   } catch (error) {
     console.error("Error en getNoticesList API:", error);
-    return [];
+    return { data: [], total: 0, page: 1, totalPages: 1 };
   }
 };
 
@@ -1460,14 +1458,15 @@ export const uploadProfilePhoto = async (file) => {
   return await response.json();
 };
 
-export const getPendingPhotos = async () => {
+export const getPendingPhotos = async ({ page = 1, limit = 10 } = {}) => {
   const token = localStorage.getItem('token');
-  const response = await fetch(`${API_URL}/profile-photo/pending`, {
+  const params = new URLSearchParams({ page, limit });
+  const response = await fetch(`${API_URL}/profile-photo/pending?${params}`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
   if (!response.ok) throw new Error('Error al obtener fotos pendientes');
-  const res = await response.json();
-  return res.data;
+  const result = await response.json();
+  return { data: result.data || [], total: result.total || 0, page: result.page || 1, totalPages: result.totalPages || 1 };
 };
 
 export const approveProfilePhoto = async (userId) => {
@@ -1492,14 +1491,15 @@ export const rejectProfilePhoto = async (userId) => {
 
 // ==================== WEBSITE PRODUCTS (Imágenes del catálogo web) ====================
 
-export const getWebsiteProductsAll = async () => {
+export const getWebsiteProductsAll = async ({ page = 1, limit = 10 } = {}) => {
   const token = localStorage.getItem('token');
-  const response = await fetch(`${API_URL}/website-products/all`, {
+  const params = new URLSearchParams({ page, limit });
+  const response = await fetch(`${API_URL}/website-products/all?${params}`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
   if (!response.ok) throw new Error('Error al obtener productos del sitio web');
-  const res = await response.json();
-  return res.data;
+  const result = await response.json();
+  return { data: result.data || [], total: result.total || 0, page: result.page || 1, totalPages: result.totalPages || 1 };
 };
 
 export const createWebsiteProduct = async (formData) => {
