@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults, getPendingPhotos, approveProfilePhoto, rejectProfilePhoto } from '../services/authService'; 
+import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults, getPendingPhotos, approveProfilePhoto, rejectProfilePhoto, getWebsiteProductsAll, createWebsiteProduct, updateWebsiteProduct, deleteWebsiteProduct } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
 import Avatar from '../components/Avatar';
 import TextInput from '../components/TextInput';
@@ -117,6 +117,133 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   const [noticesList, setNoticesList] = useState([]); // Lista para la tabla
   const [noticeSearchTerm, setNoticeSearchTerm] = useState(''); // Buscador de avisos
   const [processingId, setProcessingId] = useState(null); // Para saber qué fila se está cargando
+
+  // Estado para productos del catálogo web
+  const [websiteProducts, setWebsiteProducts] = useState([]);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [productForm, setProductForm] = useState({ name: '', description: '', display_order: '0', status: 'Activo' });
+  const [productImage, setProductImage] = useState(null);
+  const [productImagePreview, setProductImagePreview] = useState(null);
+  const [productLoading, setProductLoading] = useState(false);
+  const [productNotification, setProductNotification] = useState({ message: '', type: 'success', visible: false });
+  const [productModalOpen, setProductModalOpen] = useState(false);
+
+  const showProductNotification = (message, type = 'success') => {
+    setProductNotification({ message, type, visible: true });
+    setTimeout(() => setProductNotification(prev => ({ ...prev, visible: false })), 4000);
+  };
+
+  const loadWebsiteProducts = async () => {
+    try {
+      const data = await getWebsiteProductsAll();
+      setWebsiteProducts(data);
+    } catch (error) {
+      console.error("Error al cargar productos del sitio web:", error);
+    }
+  };
+
+  const handleProductFormChange = (e) => {
+    const { name, value } = e.target;
+    setProductForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleProductImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        showProductNotification('Solo se permiten imágenes JPG, PNG o WEBP.', 'error');
+        e.target.value = '';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        showProductNotification('La imagen no debe exceder 5MB.', 'error');
+        e.target.value = '';
+        return;
+      }
+      setProductImage(file);
+      setProductImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleSelectProduct = (product) => {
+    setEditingProduct(product);
+    setProductForm({
+      name: product.name,
+      description: product.description,
+      display_order: String(product.display_order),
+      status: product.status
+    });
+    setProductImage(null);
+    setProductImagePreview(product.image_url);
+    setProductModalOpen(true);
+  };
+
+  const handleOpenNewProduct = (slot = 0) => {
+    setEditingProduct(null);
+    setProductForm({ name: '', description: '', display_order: String(slot), status: 'Activo' });
+    setProductImage(null);
+    setProductImagePreview(null);
+    setProductModalOpen(true);
+  };
+
+  const handleResetProductForm = () => {
+    setEditingProduct(null);
+    setProductForm({ name: '', description: '', display_order: '0', status: 'Activo' });
+    setProductImage(null);
+    setProductImagePreview(null);
+    setProductModalOpen(false);
+  };
+
+  const handleSaveProduct = async () => {
+    if (!productForm.name || !productForm.description) {
+      showProductNotification('El nombre y la descripción son obligatorios.', 'error');
+      return;
+    }
+    if (!editingProduct && !productImage) {
+      showProductNotification('Debe seleccionar una imagen para el producto.', 'error');
+      return;
+    }
+    setProductLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('name', productForm.name);
+      formData.append('description', productForm.description);
+      formData.append('display_order', productForm.display_order);
+      formData.append('status', productForm.status);
+      if (productImage) {
+        formData.append('image', productImage);
+      }
+
+      if (editingProduct) {
+        await updateWebsiteProduct(editingProduct.id, formData);
+        showProductNotification('Producto actualizado correctamente.');
+      } else {
+        await createWebsiteProduct(formData);
+        showProductNotification('Producto creado correctamente.');
+      }
+      handleResetProductForm();
+      loadWebsiteProducts();
+    } catch (error) {
+      showProductNotification(`Error: ${error.message}`, 'error');
+    } finally {
+      setProductLoading(false);
+    }
+  };
+
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar este producto del catálogo?')) return;
+    setProductLoading(true);
+    try {
+      await deleteWebsiteProduct(id);
+      showProductNotification('Producto eliminado correctamente.');
+      if (editingProduct && editingProduct.id === id) handleResetProductForm();
+      loadWebsiteProducts();
+    } catch (error) {
+      showProductNotification(`Error: ${error.message}`, 'error');
+    } finally {
+      setProductLoading(false);
+    }
+  };
 
   // Función para cargar la lista de mensajes registrados
   const loadNotices = async () => {
@@ -1134,6 +1261,12 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
               Comunicado web
             </button>
             <button
+              className={`btn ${websiteTab === 'products' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => { setWebsiteTab('products'); loadWebsiteProducts(); }}
+            >
+              Imágenes
+            </button>
+            <button
               className={`btn ${websiteTab === 'applicants' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setWebsiteTab('applicants')}
             >
@@ -1262,6 +1395,248 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                   </div>
                 </div>
               </div>
+            </>
+          )}
+
+          {/* CONTENIDO: Tab Imágenes */}
+          {websiteTab === 'products' && (
+            <>
+              {/* Notificación */}
+              {productNotification.visible && (
+                <div style={{
+                  padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1rem',
+                  backgroundColor: productNotification.type === 'error' ? '#fee2e2' : '#d1fae5',
+                  color: productNotification.type === 'error' ? '#991b1b' : '#065f46',
+                  border: `1px solid ${productNotification.type === 'error' ? '#fca5a5' : '#6ee7b7'}`,
+                  fontWeight: '600', fontSize: '0.85rem'
+                }}>
+                  {productNotification.message}
+                </div>
+              )}
+
+              <p style={{ fontSize: '0.85rem', color: 'var(--secondary)', marginBottom: '1.5rem' }}>
+                Administra las imágenes que se muestran en la sección de Productos del sitio web. Máximo 6 productos (slots del 1 al 6).
+              </p>
+
+              {/* Vista previa del catálogo - Grid 3x2 */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1rem', color: 'var(--secondary)', marginBottom: '1rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="material-symbols-outlined">visibility</span>
+                  Vista Previa del Catálogo
+                </h3>
+                <div style={{
+                  backgroundColor: '#f8fafc', borderRadius: '16px', padding: '1.5rem',
+                  border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
+                }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'center', alignItems: 'flex-start' }}>
+                    {Array.from({ length: 6 }, (_, i) => i).map((slotIndex) => {
+                      const product = websiteProducts.find(p => p.display_order === slotIndex && p.status === 'Activo');
+                      if (product) {
+                        return (
+                          <div key={product.id} style={{
+                            backgroundColor: 'white', borderRadius: '12px', overflow: 'hidden',
+                            border: '1px solid #e2e8f0', transition: 'all 0.2s ease', cursor: 'pointer',
+                            width: 'calc((100% - 2rem) / 3)'
+                          }}
+                          onClick={() => handleSelectProduct(product)}>
+                            <img
+                              src={product.image_url}
+                              alt={product.name}
+                              style={{ width: '100%', height: '130px', objectFit: 'contain', backgroundColor: 'transparent' }}
+                              onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 130"><rect fill="%23f1f5f9" width="300" height="130"/><text fill="%2394a3b8" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="70">Sin imagen</text></svg>'; }}
+                            />
+                            <div style={{ padding: '0.75rem' }}>
+                              <p style={{ fontWeight: '700', fontSize: '0.85rem', color: '#d32f2f', margin: 0 }}>#{slotIndex + 1} {product.name}</p>
+                              <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '0.25rem 0 0', lineHeight: '1.3' }}>
+                                {product.description.length > 50 ? product.description.substring(0, 50) + '...' : product.description}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={`empty-${slotIndex}`} onClick={() => handleOpenNewProduct(slotIndex)} style={{
+                          backgroundColor: '#f8fafc', borderRadius: '12px', border: '2px dashed #e2e8f0',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                          minHeight: '196px', opacity: 0.6, cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          width: 'calc((100% - 2rem) / 3)'
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#d32f2f'; e.currentTarget.style.opacity = '1'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.opacity = '0.6'; }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: '2rem', color: '#cbd5e1' }}>add</span>
+                          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0.5rem 0 0' }}>Slot {slotIndex + 1}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Botón agregar producto */}
+              <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '1rem', color: 'var(--secondary)', fontWeight: '700' }}>
+                  Productos Registrados ({websiteProducts.length}/6)
+                </h3>
+                {websiteProducts.length < 6 && (
+                  <button className="btn btn-primary" onClick={() => {
+                    const usedSlots = websiteProducts.map(p => p.display_order);
+                    const nextSlot = Array.from({ length: 6 }, (_, i) => i).find(i => !usedSlots.includes(i));
+                    handleOpenNewProduct(nextSlot !== undefined ? nextSlot : 0);
+                  }} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>add_photo_alternate</span>
+                    Agregar producto
+                  </button>
+                )}
+              </div>
+
+              {/* Tabla de productos */}
+              <div className="table-container-card">
+                <div className="table-scroll-wrapper">
+                  <table className="industrial-table">
+                    <thead>
+                      <tr>
+                        <th>Slot</th>
+                        <th>Nombre</th>
+                        <th>Descripción</th>
+                        <th>Estado</th>
+                        <th className="text-center">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {websiteProducts.length > 0 ? (
+                        [...websiteProducts].sort((a, b) => a.display_order - b.display_order).map((product) => (
+                          <tr key={product.id} style={{ cursor: 'pointer' }} onClick={() => handleSelectProduct(product)}>
+                            <td style={{ fontWeight: '700', color: 'var(--primary)' }}>#{product.display_order + 1}</td>
+                            <td style={{ fontWeight: '600' }}>{product.name}</td>
+                            <td style={{ fontSize: '0.8rem', color: 'var(--secondary)', maxWidth: '300px' }}>
+                              {product.description.length > 80 ? product.description.substring(0, 80) + '...' : product.description}
+                            </td>
+                            <td>
+                              <span style={{
+                                padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: '600',
+                                backgroundColor: product.status === 'Activo' ? '#d1fae5' : '#fee2e2',
+                                color: product.status === 'Activo' ? '#065f46' : '#991b1b',
+                                border: `1px solid ${product.status === 'Activo' ? '#6ee7b7' : '#fca5a5'}`
+                              }}>
+                                {product.status}
+                              </span>
+                            </td>
+                            <td className="text-center">
+                              <button
+                                className="btn btn-secondary"
+                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', color: '#ef4444' }}
+                                onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id); }}
+                                disabled={productLoading}
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>delete</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr><td colSpan="5" className="text-center no-data">No hay productos registrados en el catálogo. Haz clic en "Agregar producto" para crear uno.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Modal de producto */}
+              {productModalOpen && (
+                <div className="modal-overlay" onClick={() => setProductModalOpen(false)}>
+                  <div className="modal-container" style={{ maxWidth: '550px', width: '95%' }} onClick={(e) => e.stopPropagation()}>
+                    <div className="modal-header" style={{ backgroundColor: 'var(--primary)', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span className="material-symbols-outlined">{editingProduct ? 'edit' : 'add_photo_alternate'}</span>
+                        <h3 style={{ margin: 0 }}>{editingProduct ? `Editando Slot #${editingProduct.display_order + 1}` : 'Nuevo Producto'}</h3>
+                      </div>
+                      <button onClick={() => setProductModalOpen(false)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
+                    </div>
+                    <div className="modal-body" style={{ padding: '1.5rem', maxHeight: '75vh', overflowY: 'auto' }}>
+                      {/* Preview de imagen */}
+                      {productImagePreview && (
+                        <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                          <img src={productImagePreview} alt="Preview" style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '8px', objectFit: 'cover', border: '1px solid var(--outline-variant)' }} />
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div className="form-field">
+                          <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Slot (Orden)</label>
+                          <CustomSelect
+                            name="display_order"
+                            value={productForm.display_order}
+                            onChange={handleProductFormChange}
+                            options={Array.from({ length: 6 }, (_, i) => ({ value: String(i), label: `Slot ${i + 1}` }))}
+                            isDisabled={!!editingProduct}
+                          />
+                        </div>
+
+                        <div className="form-field">
+                          <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Nombre del Producto</label>
+                          <TextInput
+                            name="name"
+                            className="field-input"
+                            value={productForm.name}
+                            onChange={handleProductFormChange}
+                            placeholder="Ej: Estoperas"
+                            sanitize="alphaWithSpaces"
+                            required
+                          />
+                        </div>
+
+                        <div className="form-field">
+                          <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Descripción</label>
+                          <textarea
+                            name="description"
+                            className="field-input"
+                            value={productForm.description}
+                            onChange={handleProductFormChange}
+                            placeholder="Descripción del producto para el catálogo web..."
+                            rows="3"
+                            style={{ resize: 'vertical' }}
+                            required
+                          />
+                        </div>
+
+                        <div className="form-field">
+                          <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Estado</label>
+                          <CustomSelect
+                            name="status"
+                            value={productForm.status}
+                            onChange={handleProductFormChange}
+                            options={[
+                              { value: 'Activo', label: 'Activo (visible en web)' },
+                              { value: 'Inactivo', label: 'Inactivo (oculto)' }
+                            ]}
+                          />
+                        </div>
+
+                        <div className="form-field">
+                          <label style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: '600' }}>Imagen (JPG, PNG o WEBP, máx. 5MB)</label>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            onChange={handleProductImageChange}
+                            style={{
+                              padding: '0.75rem', border: '1px solid var(--outline-variant)', borderRadius: '8px',
+                              fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', cursor: 'pointer',
+                              backgroundColor: 'var(--surface)'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', padding: '1rem 1.5rem', borderTop: '1px solid var(--outline-variant)' }}>
+                      <button className="btn btn-secondary" onClick={() => setProductModalOpen(false)} disabled={productLoading}>Cancelar</button>
+                      <button className="btn btn-primary" onClick={handleSaveProduct} disabled={productLoading}>
+                        {productLoading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Crear Producto')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 

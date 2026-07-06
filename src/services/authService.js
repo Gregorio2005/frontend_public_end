@@ -1489,3 +1489,56 @@ export const rejectProfilePhoto = async (userId) => {
   if (!response.ok) throw new Error('Error al rechazar foto');
   return await response.json();
 };
+
+// ==================== WEBSITE PRODUCTS (Imágenes del catálogo web) ====================
+
+export const getWebsiteProductsAll = async () => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/website-products/all`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) throw new Error('Error al obtener productos del sitio web');
+  const res = await response.json();
+  return res.data;
+};
+
+export const createWebsiteProduct = async (formData) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/website-products`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Error al crear producto');
+  }
+  return await response.json();
+};
+
+export const updateWebsiteProduct = async (id, formData) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/website-products/${id}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Error al actualizar producto');
+  }
+  return await response.json();
+};
+
+export const deleteWebsiteProduct = async (id) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/website-products/${id}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Error al eliminar producto');
+  }
+  return await response.json();
+};
