@@ -25,6 +25,11 @@ const Dashboard = ({ user = {}, onLogout }) => {
   const refreshNotifications = () => {
     bellRef.current?.refresh();
   };
+
+  const refreshStats = async () => {
+    const stats = await getInspectionStats();
+    setInspectionStats(stats);
+  };
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -191,8 +196,6 @@ const Dashboard = ({ user = {}, onLogout }) => {
       setInspectionStats(stats);
     };
     loadStats();
-    const interval = setInterval(loadStats, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -493,9 +496,9 @@ const Dashboard = ({ user = {}, onLogout }) => {
       case 'Jefe de Calidad':
         return <JefeCalidadDashboardContent activeAction={activeAction} user={profileData || user} refreshNotifications={refreshNotifications} />;
       case 'Jefe de Ingeniería':
-        return <JefeIngenieriaDashboardContent activeAction={activeAction} user={profileData || user} refreshNotifications={refreshNotifications} />;
+        return <JefeIngenieriaDashboardContent activeAction={activeAction} user={profileData || user} refreshNotifications={refreshNotifications} refreshStats={refreshStats} />;
       case 'Trabajador':
-        return <TrabajadorDashboardContent activeAction={activeAction} user={profileData || user} refreshNotifications={refreshNotifications} />;
+        return <TrabajadorDashboardContent activeAction={activeAction} user={profileData || user} refreshNotifications={refreshNotifications} refreshStats={refreshStats} />;
       default:
         return (
           <section className="status-card error">

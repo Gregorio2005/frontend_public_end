@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults, getPendingPhotos, approveProfilePhoto, rejectProfilePhoto, getWebsiteProductsAll, createWebsiteProduct, updateWebsiteProduct, deleteWebsiteProduct } from '../services/authService'; 
+import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults, getPendingPhotos, approveProfilePhoto, rejectProfilePhoto, getWebsiteProductsAll, createWebsiteProduct, updateWebsiteProduct, deleteWebsiteProduct, getReportPdfUrl } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
 import Pagination from '../components/Pagination';
 import Avatar from '../components/Avatar';
@@ -1825,6 +1825,29 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
               <CustomSelect name="insumoIndex" value={inspectionView.insumoIndex} onChange={handleInspectionViewChange} disabled={!inspectionView.invoiceId} options={selectedInvoiceItems.map((ins, idx) => ({ value: idx, label: ins.reference }))} placeholder="Seleccione referencia..." />
             </div>
           </div>
+
+          {inspectionView.invoiceId && (
+            <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <a
+                href={getReportPdfUrl(inspectionView.invoiceId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  textDecoration: 'none'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>picture_as_pdf</span>
+                Descargar Reporte PDF
+              </a>
+            </div>
+          )}
 
           {inspectionHistory.length > 0 && selectedInvoiceItems[inspectionView.insumoIndex] && (
             <div className="table-container-card" style={{ marginTop: '2rem' }}>

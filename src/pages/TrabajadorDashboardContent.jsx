@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { getSuppliers, getMasterInputsBySupplier, registerBill, registerBillInput, getBills, getBillInputsByBillId, registerInspection, getTypeInputs } from '../services/authService';
+import { getSuppliers, getMasterInputsBySupplier, registerBill, registerBillInput, getBills, getBillInputsByBillId, registerInspection, getTypeInputs, createReportApproved, createReportRefused } from '../services/authService';
 import ConfirmModal from '../components/ConfirmModal';
 import NumericInput from '../components/NumericInput';
 import TextInput from '../components/TextInput';
 import CustomSelect from '../components/CustomSelect';
 
-const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }) => {
+const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications, refreshStats }) => {
   const [formData, setFormData] = useState({
     numero_factura: '',
     fecha_factura: '',
@@ -526,6 +526,8 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
           }
         }
 
+        item._computedStatus = itemStatus;
+
         const payload = {
           bill_inputs_id: selectedInsumo.bill_inputs_id,
           users_id: userId,
@@ -551,7 +553,26 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
       
       await Promise.all(promises);
 
+      const statusCounts = itemsToSave.reduce((acc, item) => {
+        const status = item._computedStatus || 'Incompleta';
+        if (status === 'Aprobado') acc.approved += 1;
+        else if (status === 'Rechazado') acc.refused += 1;
+        return acc;
+      }, { approved: 0, refused: 0 });
+
+      const billId = inspectionData.invoiceId;
+
+      if (statusCounts.approved > 0) {
+        try { await createReportApproved(billId, statusCounts.approved); }
+        catch (e) { console.error("Error al crear reporte de aprobación:", e); }
+      }
+      if (statusCounts.refused > 0) {
+        try { await createReportRefused(billId, statusCounts.refused, 'Rechazado por no cumplir con los valores esperados en la inspección'); }
+        catch (e) { console.error("Error al crear reporte de rechazo:", e); }
+      }
+
       refreshNotifications();
+      if (refreshStats) refreshStats();
       showNotification("Inspección guardada físicamente en la base de datos.");
       setInspectionData({ invoiceId: '', insumoIndex: '', details: {} });
     } catch (err) {
@@ -618,7 +639,7 @@ const TrabajadorDashboardContent = ({ activeAction, user, refreshNotifications }
                 </button>
               </div>
 
-              <div className="table-container-card">
+              <div className="table-container-card" style={{ overflow: 'visible' }}>
                 <table className="industrial-table">
                   <thead>
                     <tr>

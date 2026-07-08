@@ -1542,3 +1542,82 @@ export const deleteWebsiteProduct = async (id) => {
   }
   return await response.json();
 };
+
+// =============================================
+// Servicios de Reportes PDF
+// =============================================
+
+export const getReportPdfUrl = (billDataId) => {
+  const token = localStorage.getItem('token');
+  return `${API_URL}/report-pdf/${billDataId}?token=${token}`;
+};
+
+// =============================================
+// Servicios de Reportes (Aprobados / Rechazados)
+// =============================================
+
+export const createReportApproved = async (billDataId, approvedQuantity) => {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('No hay una sesión activa.');
+  const response = await fetch(`${API_URL}/reports-approved`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ bill_data_id: billDataId, approved_quantity: approvedQuantity })
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Error al registrar reporte de aprobación');
+  }
+  return await response.json();
+};
+
+export const createReportRefused = async (billDataId, claimQuantity, rejectionReason) => {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('No hay una sesión activa.');
+  const today = new Date().toISOString().split('T')[0];
+  const response = await fetch(`${API_URL}/reports-refused`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
+      bill_data_id: billDataId,
+      claim_date: today,
+      claim_quantity: claimQuantity,
+      rejection_reason: rejectionReason
+    })
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Error al registrar reporte de rechazo');
+  }
+  return await response.json();
+};
+
+export const incrementReportApproved = async (billDataId, quantity) => {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('No hay una sesión activa.');
+  const response = await fetch(`${API_URL}/reports-approved/increment`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ bill_data_id: billDataId, quantity })
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Error al incrementar reporte de aprobación');
+  }
+  return await response.json();
+};
+
+export const incrementReportRefused = async (billDataId, quantity, rejectionReason = null) => {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('No hay una sesión activa.');
+  const response = await fetch(`${API_URL}/reports-refused/increment`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ bill_data_id: billDataId, quantity, rejection_reason: rejectionReason })
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Error al incrementar reporte de rechazo');
+  }
+  return await response.json();
+};
