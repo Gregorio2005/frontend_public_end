@@ -17,7 +17,7 @@ const TechnicalSpecs = () => {
   return (
     <div className="specs-page">
       <header className="specs-header">
-        <button className="back-btn" onClick={() => window.location.href = 'http://localhost:5174'}>
+        <button className="back-btn" onClick={() => navigate('/')}>
           <span className="material-symbols-outlined">arrow_back</span>
           Regresar al Inicio
         </button>
