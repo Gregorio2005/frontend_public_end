@@ -1278,4 +1278,429 @@ select.field-input {
   box-shadow: 0 0 0 2px rgba(168, 0, 12, 0.15);
 }
 
+/* --- DATATABLE: FILTROS POR COLUMNA Y SELECCIÓN --- */
+
+/* Contenedor principal del DataTable */
+.dt-container {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Barra de búsqueda global */
+.dt-search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--outline-variant, #c4c7c5);
+  background-color: var(--surface-container-lowest, #fff);
+}
+
+.dt-search-bar > .material-symbols-outlined {
+  color: var(--secondary, #49454f);
+  font-size: 20px;
+  margin-right: 0.5rem;
+}
+
+.dt-search-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--outline-variant, #c4c7c5);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  background: transparent;
+}
+
+.dt-search-input:focus {
+  outline: none;
+  border-color: var(--primary, #a8000c);
+}
+
+.dt-search-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--secondary, #49454f);
+  padding: 4px;
+  display: flex;
+  margin-left: 0.5rem;
+  border-radius: 50%;
+}
+
+.dt-search-clear:hover {
+  background-color: var(--surface-container-high, #e7e0ec);
+}
+
+/* Scroll wrapper */
+.dt-scroll-wrapper {
+  overflow-x: auto;
+}
+
+/* Checkbox en cabecera y filas */
+.dt-th-checkbox,
+.dt-td-checkbox {
+  width: 40px;
+  text-align: center;
+}
+
+.dt-th-checkbox input,
+.dt-td-checkbox input {
+  cursor: pointer;
+  accent-color: var(--primary, #a8000c);
+  width: 16px;
+  height: 16px;
+}
+
+/* Cabecera de columna con filtro */
+.dt-th-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dt-th-text {
+  min-width: 120px;
+}
+
+/* Botón de filtro en cabecera */
+.dt-filter-dropdown {
+  position: relative;
+}
+
+.dt-filter-trigger {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--secondary, #49454f);
+  transition: all 0.15s ease;
+}
+
+.dt-filter-trigger:hover {
+  background-color: var(--surface-container-high, #e7e0ec);
+  border-color: var(--outline-variant, #c4c7c5);
+}
+
+.dt-filter-trigger.active {
+  color: var(--primary, #a8000c);
+  background-color: rgba(168, 0, 12, 0.08);
+  border-color: var(--primary, #a8000c);
+}
+
+/* Badge de filtros activos */
+.dt-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 99px;
+  background-color: var(--primary, #a8000c);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+/* Menú desplegable de filtro */
+.dt-filter-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  min-width: 220px;
+  max-width: 300px;
+  background: white;
+  border: 1px solid var(--outline-variant, #c4c7c5);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-top: 4px;
+  overflow: hidden;
+  animation: dtDropdownIn 0.15s ease;
+}
+
+@keyframes dtDropdownIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Buscador dentro del dropdown (para columnas de texto) */
+.dt-filter-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--outline-variant, #c4c7c5);
+}
+
+.dt-filter-search input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--outline-variant, #c4c7c5);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+
+.dt-filter-search input:focus {
+  outline: none;
+  border-color: var(--primary, #a8000c);
+}
+
+/* Botones de acción (Todo / Limpiar) */
+.dt-filter-actions-row {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--outline-variant, #c4c7c5);
+}
+
+.dt-filter-action {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--outline-variant, #c4c7c5);
+  border-radius: 6px;
+  background: white;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--secondary, #49454f);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dt-filter-action:hover {
+  background-color: var(--surface-container-high, #e7e0ec);
+}
+
+/* Lista de opciones checkbox */
+.dt-filter-options {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.dt-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  font-size: 0.8rem;
+}
+
+.dt-filter-option:hover {
+  background-color: var(--surface-container-low, #f1f5f9);
+}
+
+.dt-filter-option input[type="checkbox"] {
+  accent-color: var(--primary, #a8000c);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.dt-filter-option-label {
+  flex: 1;
+  color: var(--on-surface, #1c1b1f);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dt-filter-option-count {
+  font-size: 0.7rem;
+  color: var(--secondary, #49454f);
+  background: var(--surface-container-high, #e7e0ec);
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-weight: 600;
+}
+
+.dt-filter-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--secondary, #49454f);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+/* Filas clickeables y selección */
+.dt-row-clickable {
+  cursor: pointer;
+}
+
+.dt-row-selected {
+  background-color: rgba(168, 0, 12, 0.06) !important;
+}
+
+.dt-row-selected td {
+  border-bottom-color: rgba(168, 0, 12, 0.12);
+}
+
+.dt-row-selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--primary, #a8000c);
+}
+
+/* Barra de selección múltiple */
+.dt-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: linear-gradient(135deg, var(--primary, #a8000c), #c41230);
+  color: white;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  animation: dtSlideIn 0.2s ease;
+}
+
+@keyframes dtSlideIn {
+  from { opacity: 0; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dt-selection-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.dt-selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dt-selection-clear {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  color: white;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.dt-selection-clear:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* Barra de filtros activos (debajo de la tabla) */
+.dt-active-filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--outline-variant, #c4c7c5);
+  background-color: var(--surface-container-lowest, #fff);
+}
+
+.dt-active-filters-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--secondary, #49454f);
+  margin-right: 4px;
+}
+
+.dt-active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background-color: rgba(168, 0, 12, 0.08);
+  border: 1px solid rgba(168, 0, 12, 0.2);
+  color: var(--primary, #a8000c);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.dt-active-filter-chip button {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--primary, #a8000c);
+  padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.dt-active-filter-chip button:hover {
+  opacity: 1;
+}
+
+.dt-clear-all-filters {
+  background: none;
+  border: 1px solid var(--outline-variant, #c4c7c5);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--secondary, #49454f);
+  cursor: pointer;
+  margin-left: 4px;
+  transition: all 0.15s ease;
+}
+
+.dt-clear-all-filters:hover {
+  background-color: var(--surface-container-high, #e7e0ec);
+}
+
+/* Mensaje vacío */
+.dt-empty {
+  text-align: center;
+  padding: 3rem 1rem !important;
+  color: var(--secondary, #49454f);
+  font-style: italic;
+}
+
+/* --- FILTRO DE ORDENAMIENTO (ASC/DESC) --- */
+
+.dt-sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--secondary, #49454f);
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.dt-sort-trigger:hover {
+  background-color: var(--surface-container-high, #e7e0ec);
+  border-color: var(--outline-variant, #c4c7c5);
+}
+
+.dt-sort-trigger.active {
+  color: var(--primary, #a8000c);
+}
+
+.dt-sort-icon {
+  font-size: 18px !important;
+  transition: color 0.15s ease;
+}
+
+.dt-sort-icon.active {
+  color: var(--primary, #a8000c);
+}
 

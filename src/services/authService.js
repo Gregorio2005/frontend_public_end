@@ -107,7 +107,7 @@ export const registerUser = async (userData) => {
 /**
  * Servicio para obtener la lista de todos los usuarios.
  */
-export const getUsers = async ({ page = 1, limit = 10 } = {}) => {
+export const getUsers = async ({ page = 1, limit = 10, search, roles_id, status, sort, sortDir } = {}) => {
   try {
     const token = localStorage.getItem('token');
     
@@ -116,6 +116,11 @@ export const getUsers = async ({ page = 1, limit = 10 } = {}) => {
     }
 
     const params = new URLSearchParams({ page, limit });
+    if (search) params.append('search', search);
+    if (roles_id) params.append('roles_id', roles_id);
+    if (status) params.append('status', status);
+    if (sort) params.append('sort', sort);
+    if (sortDir) params.append('sortDir', sortDir);
     const response = await fetch(`${API_URL}/users?${params}`, {
       method: 'GET',
       headers: { 
@@ -291,7 +296,7 @@ export const updateProfile = async (profileData) => {
 /**
  * Servicio para obtener la lista de todos los postulantes desde la tabla 'postulantes'.
  */
-export const getApplicants = async ({ page = 1, limit = 10 } = {}) => {
+export const getApplicants = async ({ page = 1, limit = 10, search, status, sort, sortDir } = {}) => {
   try {
     const token = localStorage.getItem('token');
     
@@ -300,6 +305,10 @@ export const getApplicants = async ({ page = 1, limit = 10 } = {}) => {
     }
 
     const params = new URLSearchParams({ page, limit });
+    if (search) params.append('search', search);
+    if (status) params.append('status', status);
+    if (sort) params.append('sort', sort);
+    if (sortDir) params.append('sortDir', sortDir);
     const response = await fetch(`${API_URL}/applicants?${params}`, {
       method: 'GET',
       headers: { 

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { registerUser, getUsers, updateUser, getApplicants, updateApplicant, getCvUrl, discardApplicant, hireApplicant, updateWebsiteNotice, getWebsiteNotice, getNoticesList, getNoticeById, publishNotice, getBills, getBillInputsByBillId, getInspectionResults, getPendingPhotos, approveProfilePhoto, rejectProfilePhoto, getWebsiteProductsAll, createWebsiteProduct, updateWebsiteProduct, deleteWebsiteProduct, getReportPdfUrl } from '../services/authService'; 
 import ConfirmModal from '../components/ConfirmModal';
 import Pagination from '../components/Pagination';
 import Avatar from '../components/Avatar';
 import TextInput from '../components/TextInput';
 import CustomSelect from '../components/CustomSelect';
+import DataTable from '../components/DataTable';
  
 const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications }) => {
   // Estado inicial siguiendo el orden de la base de datos
@@ -317,21 +318,68 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   const [selectedUser, setSelectedUser] = useState(null);
   const [isEditingModal, setIsEditingModal] = useState(false);
 
-  // Estado para el buscador
-  const [searchTerm, setSearchTerm] = useState('');
+  // Filtros/orden del DataTable de usuarios
+  const [usersSort, setUsersSort] = useState(null);
+  const [usersSearch, setUsersSearch] = useState('');
+  const [usersFilters, setUsersFilters] = useState({});
+
+  const loadUsers = async (page = 1) => {
+    setFetchingUsers(true);
+    try {
+      const params = { page, limit: 10 };
+      if (usersSearch) params.search = usersSearch;
+      if (usersSort) {
+        params.sort = usersSort.column;
+        params.sortDir = usersSort.direction;
+      }
+      const rolesFilter = usersFilters.roles_id;
+      if (rolesFilter && rolesFilter.size > 0) {
+        params.roles_id = Array.from(rolesFilter).join(',');
+      }
+      const statusFilter = usersFilters.status;
+      if (statusFilter && statusFilter.size > 0) {
+        params.status = Array.from(statusFilter).join(',');
+      }
+      const result = await getUsers(params);
+      setUsers(result.data);
+      setUsersPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
+    } catch (error) {
+      console.error("Error al cargar la tabla:", error);
+    } finally {
+      setFetchingUsers(false);
+    }
+  };
 
   // Estados para la lista de postulantes
   const [applicants, setApplicants] = useState([]);
   const [applicantsPagination, setApplicantsPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [fetchingApplicants, setFetchingApplicants] = useState(false);
 
-  const refreshApplicants = async (page = 1) => {
+  // Filtros/orden del DataTable de postulantes
+  const [applicantsSort, setApplicantsSort] = useState(null);
+  const [applicantsSearch, setApplicantsSearch] = useState('');
+  const [applicantsFilters, setApplicantsFilters] = useState({});
+
+  const loadApplicants = async (page = 1) => {
+    setFetchingApplicants(true);
     try {
-      const result = await getApplicants({ page, limit: 10 });
+      const params = { page, limit: 10 };
+      if (applicantsSearch) params.search = applicantsSearch;
+      if (applicantsSort) {
+        params.sort = applicantsSort.column;
+        params.sortDir = applicantsSort.direction;
+      }
+      const statusFilter = applicantsFilters.status;
+      if (statusFilter && statusFilter.size > 0) {
+        params.status = Array.from(statusFilter).join(',');
+      }
+      const result = await getApplicants(params);
       setApplicants(result.data);
       setApplicantsPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
     } catch (error) {
       console.error("Error al recargar postulantes:", error);
+    } finally {
+      setFetchingApplicants(false);
     }
   };
 
@@ -386,18 +434,6 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
   // Cargar usuarios cuando se entra a la sección de usuarios en modo lista
   useEffect(() => {
     if (activeAction === 'users' && subView === 'list') {
-      const loadUsers = async (page = 1) => {
-        setFetchingUsers(true);
-        try {
-          const result = await getUsers({ page, limit: 10 });
-          setUsers(result.data);
-          setUsersPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
-        } catch (error) {
-          console.error("Error al cargar la tabla:", error);
-        } finally {
-          setFetchingUsers(false);
-        }
-      };
       loadUsers();
     }
 
@@ -408,21 +444,34 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
 
     // Cargar postulantes cuando se selecciona la acción correspondiente
     if (activeAction === 'applicants') {
-      const loadApplicants = async (page = 1) => {
-        setFetchingApplicants(true);
-        try {
-          const result = await getApplicants({ page, limit: 10 });
-          setApplicants(result.data);
-          setApplicantsPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
-        } catch (error) {
-          console.error("Error al cargar postulantes:", error);
-        } finally {
-          setFetchingApplicants(false);
-        }
-      };
       loadApplicants();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAction, subView, refreshKey]);
+
+  // Recargar usuarios al cambiar filtros de búsqueda/orden
+  const filterTimerRef = useRef(null);
+  useEffect(() => {
+    if (activeAction !== 'users' || subView !== 'list') return;
+    if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+    filterTimerRef.current = setTimeout(() => {
+      loadUsers(1);
+    }, usersSearch ? 350 : 0);
+    return () => { if (filterTimerRef.current) clearTimeout(filterTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAction, subView, usersSearch, usersSort, usersFilters]);
+
+  // Recargar postulantes al cambiar filtros de búsqueda/orden
+  const applicantsFilterTimerRef = useRef(null);
+  useEffect(() => {
+    if (activeAction !== 'applicants') return;
+    if (applicantsFilterTimerRef.current) clearTimeout(applicantsFilterTimerRef.current);
+    applicantsFilterTimerRef.current = setTimeout(() => {
+      loadApplicants(1);
+    }, applicantsSearch ? 350 : 0);
+    return () => { if (applicantsFilterTimerRef.current) clearTimeout(applicantsFilterTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAction, applicantsSearch, applicantsSort, applicantsFilters]);
 
   const handleInspectionViewChange = async (e) => {
     const { name, value } = e.target;
@@ -538,9 +587,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
       
       showNotification("Usuario actualizado exitosamente.");
       
-      const result = await getUsers({ page: usersPagination.page, limit: 10 });
-      setUsers(result.data);
-      setUsersPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
+      await loadUsers(usersPagination.page);
       handleCloseModal();
     } catch (error) {
       console.error("Error capturado:", error);
@@ -616,7 +663,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
         interview_medical_result: editApplicantData.interview_medical_result && editApplicantData.interview_medical_result !== 'Pendiente' ? editApplicantData.interview_medical_result : null,
       };
       const result = await updateApplicant(selectedApplicant.id, payload);
-      await refreshApplicants();
+      await loadApplicants();
       refreshNotifications();
       showNotification('Postulante actualizado correctamente.');
       handleCloseApplicantDetail();
@@ -639,7 +686,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
           await discardApplicant(selectedApplicant.id);
           const updated = { ...selectedApplicant, status: 'Descartado' };
           setSelectedApplicant(updated);
-          await refreshApplicants();
+          await loadApplicants();
           refreshNotifications();
           showNotification('Postulante descartado correctamente.');
         } catch (error) {
@@ -664,7 +711,7 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
           await hireApplicant(selectedApplicant.id);
           const updated = { ...selectedApplicant, status: 'Contratado' };
           setSelectedApplicant(updated);
-          await refreshApplicants();
+          await loadApplicants();
           refreshNotifications();
           showNotification('Postulante contratado correctamente.');
         } catch (error) {
@@ -725,24 +772,6 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
     };
     return styles[status] || { backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #9ca3af' };
   };
-
-  // Lógica de filtrado para el buscador (Nombre y CI sin prefijos)
-  const filteredUsers = users.filter(u => {
-    const term = searchTerm.toLowerCase().trim();
-    if (!term) return true;
-
-    // Búsqueda por nombre o apellido ( Gregory, Fabian, etc )
-    const fullName = `${u.name} ${u.lastname}`.toLowerCase();
-    const nameMatch = fullName.includes(term);
-
-    // Búsqueda por CI ( Permite buscar '123' y encontrar 'V-123' )
-    const ciStr = String(u.ci || '').toLowerCase();
-    const termDigits = term.replace(/\D/g, '');
-    const ciDigits = ciStr.replace(/\D/g, '');
-    const ciMatch = ciStr.includes(term) || (termDigits !== '' && ciDigits.includes(termDigits));
-
-    return nameMatch || ciMatch;
-  });
 
   // Lógica de filtrado para el buscador de avisos
   const filteredNotices = noticesList.filter(n => {
@@ -1011,77 +1040,42 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                 <p className="loading-text">Cargando lista de usuarios...</p>
               ) : (
                 <div className="table-container-card">
-                  <div className="table-filters">
-                    <div className="table-search-wrapper">
-                      <span className="material-symbols-outlined">search</span>
-                      <TextInput
-                        type="text"
-                        className="table-search-input"
-                        placeholder="Buscar por nombre o CI..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        sanitize="quotes"
-                      />
-                    </div>
-                  </div>
-                  <div className="table-scroll-wrapper">
-                  <table className="industrial-table">
-                    <thead>
-                      <tr>
-                        <th>Nombre completo</th>
-                        <th>Usuario</th>
-                        <th>Rol</th>
-                        <th>Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.isArray(filteredUsers) && filteredUsers.length > 0 ? (
-                        filteredUsers
-                          .map((u) => {
-                            const rowId = u.user_id || u.id || u.user;
-                            return (
-                          <tr key={rowId || `user-${u.ci}`} className="user-row" onClick={() => handleRowClick(u)}>
-                            <td style={{ fontWeight: '600' }}>{u.name} {u.lastname}</td>
-                            <td>{u.user}</td>
-                            <td><span className="role-badge">{getRoleName(u.roles_id)}</span></td>
-                            <td>
-                              <div className="status-indicator">
-                                <div className={`status-dot ${u.status?.toLowerCase() === 'activo' ? 'active' : 'inactive'}`}></div>
-                                <span style={{ color: u.status?.toLowerCase() === 'activo' ? 'var(--on-surface)' : 'var(--secondary)', fontSize: '0.85rem' }}>
-                                  {u.status}
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-                            );
-                          })
-                      ) : (
-                        <tr>
-                          <td colSpan="4" className="text-center no-data">
-                            No hay usuarios registrados o no se pudieron cargar.
-                          </td>
-                        </tr>
+                  <DataTable
+                    columns={[
+                      { key: 'name', label: 'Nombre completo', type: 'text', filterType: 'sort', getSearchValue: (row) => `${row.name} ${row.lastname}`, render: (val, row) => <span style={{ fontWeight: 600 }}>{row.name} {row.lastname}</span> },
+                      { key: 'user', label: 'Usuario', type: 'text', filterType: 'sort' },
+                      { key: 'roles_id', label: 'Rol', type: 'select', filterType: 'select', filterTransform: (val) => getRoleName(Number(val)), filterOptions: [
+                        { value: '1', label: 'Administrador' },
+                        { value: '2', label: 'Trabajador' },
+                        { value: '3', label: 'Jefe de Calidad' },
+                        { value: '4', label: 'Jefe de Ingeniería' }
+                      ], render: (val) => <span className="role-badge">{getRoleName(val)}</span> },
+                      { key: 'status', label: 'Estado', type: 'text', filterType: 'sort', render: (val) => (
+                        <div className="status-indicator">
+                          <div className={`status-dot ${val?.toLowerCase() === 'activo' ? 'active' : 'inactive'}`}></div>
+                          <span style={{ color: val?.toLowerCase() === 'activo' ? 'var(--on-surface)' : 'var(--secondary)', fontSize: '0.85rem' }}>{val}</span>
+                        </div>
                       )}
-                    </tbody>
-                  </table>
+                    ]}
+                    data={users}
+                    searchPlaceholder="Buscar por nombre, apellido o usuario..."
+                    onRowClick={handleRowClick}
+                    getRowId={(u) => u.user_id || u.id || u.user}
+                    emptyMessage="No hay usuarios registrados o no se pudieron cargar."
+                    selectable={false}
+                    onSortChange={(sort) => { setUsersSort(sort); }}
+                    onFilterChange={(filters) => { setUsersFilters(filters); }}
+                    onSearchChange={(search) => { setUsersSearch(search); }}
+                    sortConfig={usersSort}
+                    globalSearch={usersSearch}
+                    columnFilters={usersFilters}
+                  />
                   <Pagination
                     currentPage={usersPagination.page}
                     totalPages={usersPagination.totalPages}
                     total={usersPagination.total}
-                    onPageChange={async (page) => {
-                      setFetchingUsers(true);
-                      try {
-                        const result = await getUsers({ page, limit: 10 });
-                        setUsers(result.data);
-                        setUsersPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
-                      } catch (error) {
-                        console.error("Error al cargar usuarios:", error);
-                      } finally {
-                        setFetchingUsers(false);
-                      }
-                    }}
+                    onPageChange={(page) => loadUsers(page)}
                   />
-                  </div>
                 </div>
               )}
             </div>
@@ -1688,123 +1682,105 @@ const AdminDashboardContent = ({ activeAction, refreshKey, refreshNotifications 
                 <p className="loading-text">Cargando lista de postulantes...</p>
               ) : (
                 <div className="table-container-card">
-                  <div className="table-scroll-wrapper">
-                  <table className="industrial-table">
-                    <thead>
-                      <tr>
-                        <th>Nombre</th>
-                        <th>Apellido</th>
-                        <th>CI</th>
-                        <th>Estado</th>
-                        <th>Entrevista Formal</th>
-                        <th>Entrevista Médica</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.isArray(applicants) && applicants.length > 0 ? (
-                        applicants.map((a) => (
-                          <tr key={a.id} style={{ cursor: 'pointer' }} onClick={() => handleOpenApplicantDetail(a)}>
-                            <td style={{ fontWeight: '600' }}>{a.name}</td>
-                            <td>{a.lastname}</td>
-                            <td>{a.ci}</td>
-                            <td>
-                              <span style={{
-                                ...getStatusBadgeStyle(a.status),
-                                padding: '4px 10px',
-                                borderRadius: '12px',
-                                fontSize: '0.75rem',
-                                fontWeight: '600',
-                                whiteSpace: 'nowrap',
-                              }}>
-                                {a.status}
-                              </span>
-                            </td>
-                            <td>
-                              {a.interview_formal_result ? (
-                                <span style={{
-                                  padding: '4px 10px',
-                                  borderRadius: '12px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: '600',
-                                  whiteSpace: 'nowrap',
-                                  backgroundColor: a.interview_formal_result.includes('aprobada') ? '#d1fae5' : a.interview_formal_result.includes('rechazada') ? '#fee2e2' : '#f3f4f6',
-                                  color: a.interview_formal_result.includes('aprobada') ? '#065f46' : a.interview_formal_result.includes('rechazada') ? '#991b1b' : '#374151',
-                                  border: `1px solid ${a.interview_formal_result.includes('aprobada') ? '#6ee7b7' : a.interview_formal_result.includes('rechazada') ? '#fca5a5' : '#9ca3af'}`,
-                                }}>
-                                  {a.interview_formal_result.replace('Entrevista formal ', '')}
-                                </span>
-                              ) : a.interview_formal_date ? (
-                                <span style={{
-                                  padding: '4px 10px',
-                                  borderRadius: '12px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: '600',
-                                  whiteSpace: 'nowrap',
-                                  backgroundColor: '#f3f4f6',
-                                  color: '#374151',
-                                  border: '1px solid #9ca3af',
-                                }}>
-                                  Pendiente
-                                </span>
-                              ) : (
-                                <span style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>—</span>
-                              )}
-                            </td>
-                            <td>
-                              {a.interview_medical_result ? (
-                                <span style={{
-                                  padding: '4px 10px',
-                                  borderRadius: '12px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: '600',
-                                  whiteSpace: 'nowrap',
-                                  backgroundColor: a.interview_medical_result.includes('aprobada') ? '#d1fae5' : a.interview_medical_result.includes('rechazada') ? '#fee2e2' : '#f3f4f6',
-                                  color: a.interview_medical_result.includes('aprobada') ? '#065f46' : a.interview_medical_result.includes('rechazada') ? '#991b1b' : '#374151',
-                                  border: `1px solid ${a.interview_medical_result.includes('aprobada') ? '#6ee7b7' : a.interview_medical_result.includes('rechazada') ? '#fca5a5' : '#9ca3af'}`,
-                                }}>
-                                  {a.interview_medical_result.replace('Entrevista medica ', '')}
-                                </span>
-                              ) : a.interview_medical_date ? (
-                                <span style={{
-                                  padding: '4px 10px',
-                                  borderRadius: '12px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: '600',
-                                  whiteSpace: 'nowrap',
-                                  backgroundColor: '#f3f4f6',
-                                  color: '#374151',
-                                  border: '1px solid #9ca3af',
-                                }}>
-                                  Pendiente
-                                </span>
-                              ) : (
-                                <span style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>—</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan="6" className="text-center no-data">
-                            No hay postulantes registrados o no se pudieron cargar.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                  <DataTable
+                    columns={[
+                      { key: 'name', label: 'Nombre', type: 'text', filterType: 'sort', getSearchValue: (row) => `${row.name} ${row.lastname}`, render: (val, row) => <span style={{ fontWeight: 600 }}>{val}</span> },
+                      { key: 'lastname', label: 'Apellido', type: 'text', filterType: 'sort' },
+                      { key: 'ci', label: 'CI', type: 'text', filterType: 'sort' },
+                      { key: 'status', label: 'Estado', type: 'text', filterType: 'sort', render: (val) => (
+                        <span style={{
+                          ...getStatusBadgeStyle(val),
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: '600',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {val}
+                        </span>
+                      )},
+                      { key: 'interview_formal_result', label: 'Entrevista Formal', type: 'text', filterable: false, render: (val, row) => (
+                        val ? (
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            whiteSpace: 'nowrap',
+                            backgroundColor: val.includes('aprobada') ? '#d1fae5' : val.includes('rechazada') ? '#fee2e2' : '#f3f4f6',
+                            color: val.includes('aprobada') ? '#065f46' : val.includes('rechazada') ? '#991b1b' : '#374151',
+                            border: `1px solid ${val.includes('aprobada') ? '#6ee7b7' : val.includes('rechazada') ? '#fca5a5' : '#9ca3af'}`,
+                          }}>
+                            {val.replace('Entrevista formal ', '')}
+                          </span>
+                        ) : row.interview_formal_date ? (
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            whiteSpace: 'nowrap',
+                            backgroundColor: '#f3f4f6',
+                            color: '#374151',
+                            border: '1px solid #9ca3af',
+                          }}>
+                            Pendiente
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>—</span>
+                        )
+                      )},
+                      { key: 'interview_medical_result', label: 'Entrevista Médica', type: 'text', filterable: false, render: (val, row) => (
+                        val ? (
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            whiteSpace: 'nowrap',
+                            backgroundColor: val.includes('aprobada') ? '#d1fae5' : val.includes('rechazada') ? '#fee2e2' : '#f3f4f6',
+                            color: val.includes('aprobada') ? '#065f46' : val.includes('rechazada') ? '#991b1b' : '#374151',
+                            border: `1px solid ${val.includes('aprobada') ? '#6ee7b7' : val.includes('rechazada') ? '#fca5a5' : '#9ca3af'}`,
+                          }}>
+                            {val.replace('Entrevista medica ', '')}
+                          </span>
+                        ) : row.interview_medical_date ? (
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            whiteSpace: 'nowrap',
+                            backgroundColor: '#f3f4f6',
+                            color: '#374151',
+                            border: '1px solid #9ca3af',
+                          }}>
+                            Pendiente
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--secondary)', fontSize: '0.8rem' }}>—</span>
+                        )
+                      )},
+                    ]}
+                    data={applicants}
+                    searchPlaceholder="Buscar por nombre, apellido o CI..."
+                    onRowClick={handleOpenApplicantDetail}
+                    getRowId={(a) => a.id}
+                    emptyMessage="No hay postulantes registrados o no se pudieron cargar."
+                    selectable={false}
+                    onSortChange={(sort) => { setApplicantsSort(sort); }}
+                    onFilterChange={(filters) => { setApplicantsFilters(filters); }}
+                    onSearchChange={(search) => { setApplicantsSearch(search); }}
+                    sortConfig={applicantsSort}
+                    globalSearch={applicantsSearch}
+                    columnFilters={applicantsFilters}
+                  />
                   <Pagination
                     currentPage={applicantsPagination.page}
                     totalPages={applicantsPagination.totalPages}
                     total={applicantsPagination.total}
-                    onPageChange={(page) => {
-                      setFetchingApplicants(true);
-                      getApplicants({ page, limit: 10 }).then(result => {
-                        setApplicants(result.data);
-                        setApplicantsPagination({ page: result.page, totalPages: result.totalPages, total: result.total });
-                      }).catch(console.error).finally(() => setFetchingApplicants(false));
-                    }}
+                    onPageChange={(page) => loadApplicants(page)}
                   />
-                  </div>
                 </div>
               )}
             </>

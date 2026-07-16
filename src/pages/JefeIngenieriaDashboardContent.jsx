@@ -32,6 +32,7 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
   const [editFormData, setEditFormData] = useState(null);
   const [selectedEditType, setSelectedEditType] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [estadoSort, setEstadoSort] = useState(null);
 
   // Estados para la Validación de Inspecciones
   const [invoices, setInvoices] = useState([]);
@@ -592,6 +593,14 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
     return reference.includes(term) || 
            tipo.includes(term) ||
            (ins.presentation && ins.presentation.toLowerCase().includes(term));
+  }).sort((a, b) => {
+    if (!estadoSort) return 0;
+    const aVal = (a.master_status || 'Sin estado').toLowerCase();
+    const bVal = (b.master_status || 'Sin estado').toLowerCase();
+    const dir = estadoSort === 'asc' ? 1 : -1;
+    if (aVal < bVal) return -1 * dir;
+    if (aVal > bVal) return 1 * dir;
+    return 0;
   });
 
   return (
@@ -814,7 +823,24 @@ const JefeIngenieriaDashboardContent = ({ activeAction, user, refreshNotificatio
                         {visibleSpecs.map(key => (
                           <th key={key}>{getLabel(key, selectedTypeId)}</th>
                         ))}
-                        <th className="text-center">Estado</th>
+                        <th className="text-center">
+                          <div className="dt-th-content" style={{ justifyContent: 'center' }}>
+                            <span>Estado</span>
+                            <button
+                              className={`dt-sort-trigger ${estadoSort ? 'active' : ''}`}
+                              onClick={() => setEstadoSort(prev => {
+                                if (prev === 'asc') return 'desc';
+                                if (prev === 'desc') return null;
+                                return 'asc';
+                              })}
+                              title={estadoSort === 'asc' ? 'Orden ascendente (clic para descendente)' : estadoSort === 'desc' ? 'Orden descendente (clic para quitar)' : 'Clic para ordenar'}
+                            >
+                              {!estadoSort && <span className="material-symbols-outlined dt-sort-icon">unfold_more</span>}
+                              {estadoSort === 'asc' && <span className="material-symbols-outlined dt-sort-icon active">arrow_upward</span>}
+                              {estadoSort === 'desc' && <span className="material-symbols-outlined dt-sort-icon active">arrow_downward</span>}
+                            </button>
+                          </div>
+                        </th>
                         <th className="text-center">Acciones</th>
                       </tr>
                     </thead>
